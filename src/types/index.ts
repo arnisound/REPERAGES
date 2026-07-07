@@ -1,5 +1,6 @@
 export type Discipline =
   | 'implantation'
+  | 'structures'
   | 'electricite'
   | 'eau'
   | 'reseau'
@@ -10,6 +11,7 @@ export type Discipline =
 
 export const DISCIPLINES: Discipline[] = [
   'implantation',
+  'structures',
   'electricite',
   'eau',
   'reseau',
@@ -21,6 +23,7 @@ export const DISCIPLINES: Discipline[] = [
 
 export const DISCIPLINE_LABELS: Record<Discipline, string> = {
   implantation: 'Implantation',
+  structures: 'Structures',
   electricite: 'Électricité',
   eau: 'Eau / Plomberie',
   reseau: 'Réseau',
@@ -32,6 +35,7 @@ export const DISCIPLINE_LABELS: Record<Discipline, string> = {
 
 export const DISCIPLINE_COLORS: Record<Discipline, string> = {
   implantation: '#e2e8f0',
+  structures: '#a3e635',
   electricite: '#f59e0b',
   eau: '#38bdf8',
   reseau: '#818cf8',
@@ -176,6 +180,18 @@ export interface Calibration {
   realDistanceMeters: number
 }
 
+/** Superposition d'un plan importé sur le plan du site, géoréférencée. */
+export interface PlanOverlay {
+  visible: boolean
+  center: LatLng
+  /** Rotation en degrés, sens horaire depuis le nord. */
+  rotation: number
+  /** Largeur réelle de l'image sur le terrain, en mètres. */
+  widthM: number
+  /** 0 à 1. */
+  opacity: number
+}
+
 export interface Plan {
   id: string
   projectId: string
@@ -184,6 +200,7 @@ export interface Plan {
   imageWidth: number
   imageHeight: number
   calibration: Calibration | null
+  overlay?: PlanOverlay
   createdAt: number
   updatedAt: number
 }

@@ -77,13 +77,13 @@ export default function PlansListPage() {
           ) : (
             <div
               className="list-item"
-              style={{ marginBottom: 16, opacity: 0.7 }}
-              onClick={() => navigate(`/projects/${projectId}/map`)}
+              style={{ marginBottom: 16, opacity: 0.8 }}
+              onClick={() => navigate(`/projects/${projectId}/site-plan`)}
             >
               <Pentagon size={26} style={{ color: 'var(--text-dim)', flexShrink: 0 }} />
               <div className="list-item-body">
                 <div className="list-item-title">Plan du site</div>
-                <div className="list-item-sub">Délimitez d'abord la zone sur la carte → touchez ici</div>
+                <div className="list-item-sub">Zone sur la carte (extérieur) ou croquis coté (intérieur) → touchez ici</div>
               </div>
             </div>
           )}

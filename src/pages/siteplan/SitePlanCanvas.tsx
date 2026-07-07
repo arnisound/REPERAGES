@@ -12,6 +12,18 @@ export type SitePlanBase = 'none' | 'osm' | 'sat'
 
 export type SiteSelection = { kind: 'object'; id: string } | { kind: 'line'; id: string } | null
 
+/** Plan importé géoréférencé, affiché sous les objets. */
+export interface OverlayItem {
+  id: string
+  url: string
+  center: LatLng
+  rotation: number
+  widthM: number
+  heightM: number
+  opacity: number
+  editing: boolean
+}
+
 interface Props {
   zone: LatLng[]
   objects: SiteObject[]
@@ -25,9 +37,11 @@ interface Props {
   /** Ids (objets et lignes) retenus en mode sélection multiple. */
   multiIds: Set<string>
   lineDraft: LatLng[]
+  overlays: OverlayItem[]
   onTap: (gps: LatLng) => void
   onSelect: (sel: SiteSelection) => void
   onToggleMulti: (id: string) => void
+  onOverlayMove: (id: string, gps: LatLng) => void
   onObjectMove: (id: string, gps: LatLng) => void
   /** Déplacement de groupe en mètres (est / nord) après glisser en mode multi. */
   onGroupMove: (eastM: number, northM: number) => void
@@ -67,9 +81,11 @@ export default function SitePlanCanvas({
   selection,
   multiIds,
   lineDraft,
+  overlays,
   onTap,
   onSelect,
   onToggleMulti,
+  onOverlayMove,
   onObjectMove,
   onGroupMove,
   onDraftPointMove,
@@ -305,6 +321,32 @@ export default function SitePlanCanvas({
         </Layer>
 
         <Layer>
+          {/* Plans importés géoréférencés (sous tout le reste) */}
+          {overlays.map((ov) => {
+            const img = getTileImage(ov.url)
+            if (!img) return null
+            const c = toCanvas(ov.center)
+            return (
+              <KonvaImage
+                key={ov.id}
+                image={img}
+                x={c.x}
+                y={c.y}
+                width={ov.widthM}
+                height={ov.heightM}
+                offsetX={ov.widthM / 2}
+                offsetY={ov.heightM / 2}
+                rotation={ov.rotation}
+                opacity={ov.editing ? Math.max(ov.opacity, 0.5) : ov.opacity}
+                listening={ov.editing}
+                draggable={ov.editing}
+                stroke={ov.editing ? '#38bdf8' : undefined}
+                strokeWidth={ov.editing ? px(2) : 0}
+                onDragEnd={(e) => onOverlayMove(ov.id, toGps({ x: e.target.x(), y: e.target.y() }))}
+              />
+            )
+          })}
+
           {/* Lines */}
           {lines
             .filter((l) => visibleLayers.has(l.layer))
@@ -325,7 +367,7 @@ export default function SitePlanCanvas({
                   <Line
                     points={pts.flatMap((p) => [p.x, p.y])}
                     stroke={DISCIPLINE_COLORS[l.layer]}
-                    strokeWidth={px(selected ? 6 : 4)}
+                    strokeWidth={def?.thicknessM ? Math.max(def.thicknessM, px(3)) : px(selected ? 6 : 4)}
                     hitStrokeWidth={px(22)}
                     dash={def?.dashed ? [px(10), px(8)] : undefined}
                     lineCap="round"

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
 import {
@@ -24,9 +24,13 @@ import {
   deleteSiteObject,
   duplicateSiteLine,
   duplicateSiteObject,
+  setProjectZone,
+  updatePlan,
   updateSiteLine,
   updateSiteObject,
 } from '../../db/actions'
+import { getCurrentPosition } from '../../hooks/useGeolocation'
+import { pxPerMeter } from '../../utils/scale'
 import {
   DISCIPLINES,
   DISCIPLINE_COLORS,
@@ -35,12 +39,18 @@ import {
   type LatLng,
 } from '../../types'
 import type { LineDef, PlacePayload } from '../../utils/catalog'
-import { formatArea, formatMeters, lineLengthMeters, offsetLatLng, polygonAreaM2 } from '../../utils/geo'
+import { formatArea, formatMeters, lineLengthMeters, offsetLatLng, polygonAreaM2, polygonCenter } from '../../utils/geo'
 import Modal from '../../components/Modal'
 import TopBar from '../../components/TopBar'
 import { LinePickerModal, ObjectPickerModal } from '../../components/CatalogPickers'
 import { SiteLinePanel, SiteObjectPanel } from '../../components/SitePanels'
-import SitePlanCanvas, { gridStep, type SitePlanBase, type SitePlanMode, type SiteSelection } from './SitePlanCanvas'
+import SitePlanCanvas, {
+  gridStep,
+  type OverlayItem,
+  type SitePlanBase,
+  type SitePlanMode,
+  type SiteSelection,
+} from './SitePlanCanvas'
 
 export default function SitePlanPage() {
   const { projectId } = useParams<{ projectId: string }>()
@@ -52,6 +62,8 @@ export default function SitePlanPage() {
     useLiveQuery(() => (projectId ? db.siteLines.where('projectId').equals(projectId).toArray() : []), [projectId]) ?? []
   const points =
     useLiveQuery(() => (projectId ? db.points.where('projectId').equals(projectId).toArray() : []), [projectId]) ?? []
+  const plans =
+    useLiveQuery(() => (projectId ? db.plans.where('projectId').equals(projectId).toArray() : []), [projectId]) ?? []
 
   const [mode, setMode] = useState<SitePlanMode>('view')
   const [selection, setSelection] = useState<SiteSelection>(null)
@@ -59,6 +71,7 @@ export default function SitePlanPage() {
   const [placeTarget, setPlaceTarget] = useState<PlacePayload | null>(null)
   const [lineTarget, setLineTarget] = useState<{ layer: Discipline; def: LineDef; spec?: string } | null>(null)
   const [lineDraft, setLineDraft] = useState<LatLng[]>([])
+  const [cotedLength, setCotedLength] = useState('')
   const [showObjectPicker, setShowObjectPicker] = useState(false)
   const [showLinePicker, setShowLinePicker] = useState(false)
   const [showLayerSheet, setShowLayerSheet] = useState(false)
@@ -66,6 +79,28 @@ export default function SitePlanPage() {
   const [showPoints, setShowPoints] = useState(true)
   const [baseLayer, setBaseLayer] = useState<SitePlanBase>('osm')
   const [viewScale, setViewScale] = useState(10)
+  const [overlayEditId, setOverlayEditId] = useState<string | null>(null)
+  const [photoUrls, setPhotoUrls] = useState<Map<string, string>>(new Map())
+
+  // Object URLs des images de plans superposés (créées/révoquées avec la visibilité)
+  const visibleOverlayPlans = plans.filter((p) => p.overlay?.visible || p.id === overlayEditId)
+  const overlayPhotoKey = visibleOverlayPlans.map((p) => p.photoId).sort().join(',')
+  useEffect(() => {
+    let cancelled = false
+    const urls = new Map<string, string>()
+    ;(async () => {
+      for (const photoId of overlayPhotoKey.split(',').filter(Boolean)) {
+        const photo = await db.photos.get(photoId)
+        if (photo) urls.set(photoId, URL.createObjectURL(photo.blob))
+      }
+      if (!cancelled) setPhotoUrls(urls)
+      else urls.forEach((u) => URL.revokeObjectURL(u))
+    })()
+    return () => {
+      cancelled = true
+      urls.forEach((u) => URL.revokeObjectURL(u))
+    }
+  }, [overlayPhotoKey])
 
   if (!projectId || project === undefined) return null
 
@@ -73,6 +108,64 @@ export default function SitePlanPage() {
   const selectedObject = selection?.kind === 'object' ? objects.find((o) => o.id === selection.id) ?? null : null
   const selectedLine = selection?.kind === 'line' ? lines.find((l) => l.id === selection.id) ?? null : null
   const draftLength = lineDraft.length >= 2 ? lineLengthMeters(lineDraft) : null
+  const overlayPlan = overlayEditId ? plans.find((p) => p.id === overlayEditId) ?? null : null
+
+  const overlayItems: OverlayItem[] = visibleOverlayPlans.flatMap((p) => {
+    const url = photoUrls.get(p.photoId)
+    const ov = p.overlay
+    if (!url || !ov) return []
+    return [
+      {
+        id: p.id,
+        url,
+        center: ov.center,
+        rotation: ov.rotation,
+        widthM: ov.widthM,
+        heightM: ov.widthM * (p.imageHeight / p.imageWidth),
+        opacity: ov.opacity,
+        editing: p.id === overlayEditId,
+      },
+    ]
+  })
+
+  async function toggleOverlay(planId: string) {
+    const plan = plans.find((p) => p.id === planId)
+    if (!plan || !zone) return
+    if (plan.overlay) {
+      await updatePlan(plan.id, { overlay: { ...plan.overlay, visible: !plan.overlay.visible } })
+    } else {
+      // Largeur initiale exacte si le plan est calibré, sinon 30 m à ajuster.
+      const scale = pxPerMeter(plan.calibration)
+      await updatePlan(plan.id, {
+        overlay: {
+          visible: true,
+          center: polygonCenter(zone),
+          rotation: 0,
+          widthM: scale ? plan.imageWidth / scale : 30,
+          opacity: 0.7,
+        },
+      })
+    }
+  }
+
+  async function createIndoorPlan() {
+    if (!projectId) return
+    // Lieu intérieur : le GPS situe grossièrement le bâtiment, la précision
+    // vient ensuite des murs saisis aux cotes. Zone de travail 40×40 m.
+    let center = { lat: 46.6034, lng: 1.8883 }
+    try {
+      const pos = await getCurrentPosition()
+      center = { lat: pos.lat, lng: pos.lng }
+    } catch {
+      /* pas de GPS : zone posée sur la position par défaut, déplaçable ensuite */
+    }
+    await setProjectZone(projectId, [
+      offsetLatLng(center, -20, 20),
+      offsetLatLng(center, 20, 20),
+      offsetLatLng(center, 20, -20),
+      offsetLatLng(center, -20, -20),
+    ])
+  }
 
   if (!zone || zone.length < 3) {
     return (
@@ -85,12 +178,18 @@ export default function SitePlanPage() {
                 <Pentagon size={36} style={{ marginBottom: 10, opacity: 0.6 }} />
                 <p>Aucune zone délimitée pour cet événement.</p>
                 <p style={{ marginBottom: 20 }}>
-                  Délimitez d'abord la zone du site sur la carte : elle sera exportée ici comme plan de travail à
-                  l'échelle.
+                  En extérieur, délimitez la zone du site sur la carte : elle devient le plan de travail à l'échelle.
+                  Pour un lieu intérieur, créez directement un plan et dessinez les murs aux cotes (ligne « Mur /
+                  cloison », saisie des longueurs).
                 </p>
-                <button className="btn" onClick={() => navigate(`/projects/${projectId}/map`)} type="button">
-                  Ouvrir la carte
-                </button>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10, maxWidth: 340, margin: '0 auto' }}>
+                  <button className="btn" onClick={() => navigate(`/projects/${projectId}/map`)} type="button">
+                    Ouvrir la carte (extérieur)
+                  </button>
+                  <button className="btn secondary" onClick={createIndoorPlan} type="button">
+                    Créer un plan intérieur (croquis coté)
+                  </button>
+                </div>
               </div>
             </div>
           </div>
@@ -217,9 +316,14 @@ export default function SitePlanPage() {
             selection={selection}
             multiIds={multiIds}
             lineDraft={lineDraft}
+            overlays={overlayItems}
             onTap={handleTap}
             onSelect={setSelection}
             onToggleMulti={toggleMulti}
+            onOverlayMove={(id, gps) => {
+              const p = plans.find((pl) => pl.id === id)
+              if (p?.overlay) updatePlan(id, { overlay: { ...p.overlay, center: gps } })
+            }}
             onObjectMove={(id, gps) => updateSiteObject(id, { center: gps })}
             onGroupMove={handleGroupMove}
             onDraftPointMove={(i, gps) => setLineDraft((d) => d.map((p, j) => (j === i ? gps : p)))}
@@ -243,7 +347,65 @@ export default function SitePlanPage() {
             </button>
           </div>
 
-          {mode === 'view' && !selection && (
+          {/* Réglage d'un plan superposé */}
+          {overlayPlan?.overlay && (
+            <div className="map-panel">
+              <div className="map-panel-row">
+                <span className="map-panel-title">Superposition : {overlayPlan.name} — glissez le plan pour le placer</span>
+              </div>
+              <div className="map-panel-row">
+                <label style={{ fontSize: 13, color: 'var(--text-dim)' }}>Rotation</label>
+                <input
+                  type="range"
+                  min={-180}
+                  max={180}
+                  step={1}
+                  value={overlayPlan.overlay.rotation}
+                  onChange={(e) =>
+                    updatePlan(overlayPlan.id, {
+                      overlay: { ...overlayPlan.overlay!, rotation: parseInt(e.target.value, 10) },
+                    })
+                  }
+                />
+                <span style={{ fontSize: 13, width: 44, textAlign: 'right' }}>{overlayPlan.overlay.rotation}°</span>
+              </div>
+              <div className="map-panel-row">
+                <label style={{ fontSize: 13, color: 'var(--text-dim)' }}>Largeur (m)</label>
+                <input
+                  type="number"
+                  step={0.5}
+                  min={1}
+                  value={overlayPlan.overlay.widthM}
+                  onChange={(e) =>
+                    updatePlan(overlayPlan.id, {
+                      overlay: { ...overlayPlan.overlay!, widthM: parseFloat(e.target.value) || 1 },
+                    })
+                  }
+                  style={{ width: 90 }}
+                />
+                <label style={{ fontSize: 13, color: 'var(--text-dim)' }}>Opacité</label>
+                <input
+                  type="range"
+                  min={0.1}
+                  max={1}
+                  step={0.05}
+                  value={overlayPlan.overlay.opacity}
+                  onChange={(e) =>
+                    updatePlan(overlayPlan.id, {
+                      overlay: { ...overlayPlan.overlay!, opacity: parseFloat(e.target.value) },
+                    })
+                  }
+                />
+              </div>
+              <div className="map-panel-row">
+                <button className="btn block" onClick={() => setOverlayEditId(null)} type="button">
+                  <Check size={18} /> Terminer le réglage
+                </button>
+              </div>
+            </div>
+          )}
+
+          {mode === 'view' && !selection && !overlayPlan && (
             <div className="map-toolbar">
               <button
                 className="btn secondary"
@@ -328,6 +490,42 @@ export default function SitePlanPage() {
                     ` · ${Math.ceil(draftLength / lineTarget.def.unitLengthM)} éléments`}
                 </span>
               </div>
+              {/* Segment coté : longueur au mètre laser + direction (croquis intérieur) */}
+              {lineDraft.length >= 1 && (
+                <div className="map-panel-row">
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    placeholder="Longueur (m)"
+                    value={cotedLength}
+                    onChange={(e) => setCotedLength(e.target.value)}
+                    style={{ width: 110 }}
+                  />
+                  {(
+                    [
+                      ['↑', 0, 1],
+                      ['→', 1, 0],
+                      ['↓', 0, -1],
+                      ['←', -1, 0],
+                    ] as const
+                  ).map(([arrow, dx, dy]) => (
+                    <button
+                      key={arrow}
+                      className="btn secondary"
+                      style={{ minWidth: 44, padding: '8px 10px' }}
+                      disabled={!(parseFloat(cotedLength.replace(',', '.')) > 0)}
+                      onClick={() => {
+                        const len = parseFloat(cotedLength.replace(',', '.'))
+                        if (!(len > 0)) return
+                        setLineDraft((d) => [...d, offsetLatLng(d[d.length - 1], dx * len, dy * len)])
+                      }}
+                      type="button"
+                    >
+                      {arrow}
+                    </button>
+                  ))}
+                </div>
+              )}
               <div className="map-panel-row">
                 <button
                   className="btn secondary"
@@ -414,6 +612,38 @@ export default function SitePlanPage() {
               <span style={{ width: 12, height: 12, borderRadius: '50%', background: '#64748b', flexShrink: 0 }} />
               <span className="list-item-body">Repères GPS</span>
             </label>
+            {plans.length > 0 && (
+              <>
+                <h3 style={{ fontSize: 13, color: 'var(--text-dim)', margin: '8px 0 0' }}>
+                  Plans importés (superposer au site)
+                </h3>
+                {plans.map((p) => (
+                  <label key={p.id} className="list-item" style={{ cursor: 'pointer' }}>
+                    <input
+                      type="checkbox"
+                      checked={!!p.overlay?.visible}
+                      onChange={() => toggleOverlay(p.id)}
+                      style={{ width: 20, height: 20 }}
+                    />
+                    <span className="list-item-body">{p.name}</span>
+                    {p.overlay?.visible && (
+                      <button
+                        className="btn secondary"
+                        style={{ minHeight: 36, padding: '6px 12px' }}
+                        onClick={(e) => {
+                          e.preventDefault()
+                          setOverlayEditId(p.id)
+                          setShowLayerSheet(false)
+                        }}
+                        type="button"
+                      >
+                        Régler
+                      </button>
+                    )}
+                  </label>
+                ))}
+              </>
+            )}
           </div>
         </Modal>
       )}

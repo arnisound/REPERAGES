@@ -471,6 +471,23 @@ export default function MapPage() {
             <div className="map-panel-row">
               <button
                 className="btn secondary"
+                onClick={async () => {
+                  // Relevé de terrain : marcher le long des façades/limites et
+                  // enregistrer un sommet à chaque arrêt.
+                  try {
+                    const pos = position ?? (await getCurrentPosition())
+                    setZoneDraft((d) => [...d, { lat: pos.lat, lng: pos.lng }])
+                    mapInstance?.panTo([pos.lat, pos.lng])
+                  } catch (err) {
+                    alert((err as Error).message)
+                  }
+                }}
+                type="button"
+              >
+                <LocateFixed size={18} /> + à ma position
+              </button>
+              <button
+                className="btn secondary"
                 onClick={() => setZoneDraft((d) => d.slice(0, -1))}
                 disabled={zoneDraft.length === 0}
                 type="button"

@@ -31,7 +31,13 @@ export interface LineDef {
   specs?: string[]
   /** Retiré du sélecteur mais toujours résolu pour les lignes déjà tracées. */
   legacy?: boolean
+  /** Épaisseur réelle du trait en mètres (murs, cloisons) — sinon épaisseur d'écran fixe. */
+  thicknessM?: number
 }
+
+export const HEIGHT_SPECS = ['H 2 m', 'H 3 m', 'H 4 m', 'H 6 m', 'H 8 m', 'H 10 m']
+
+export const TRUSS_SPECS = ['H30V', 'H40V', 'S36R', 'F34', 'Autre série']
 
 export const ELEC_SPECS = [
   'MONO 16A',
@@ -68,6 +74,16 @@ export const OBJECT_CATALOG: Record<Discipline, ObjectDef[]> = {
     { type: 'panneau', label: 'Panneau / signalétique', w: 0.8, h: 0.1, glyph: 'PA', point: true },
     { type: 'deco', label: 'Décoration', w: 0.5, h: 0.5, glyph: 'DE', point: true },
     { type: 'objet_custom', label: 'Objet personnalisé', w: 1, h: 1, glyph: '?' },
+  ],
+  structures: [
+    { type: 'praticable', label: 'Praticable 2×1 m', w: 2, h: 1, glyph: 'PR', specs: HEIGHT_SPECS },
+    { type: 'tour_levage', label: 'Tour de levage', w: 1.4, h: 1.4, glyph: 'TL', specs: HEIGHT_SPECS },
+    { type: 'echafaudage', label: 'Échafaudage module 2,5×1 m', w: 2.5, h: 1, glyph: 'EC', specs: HEIGHT_SPECS },
+    { type: 'ground_support', label: 'Ground support 8×6 m', w: 8, h: 6, glyph: 'GS', specs: HEIGHT_SPECS },
+    { type: 'scene_mobile', label: 'Scène mobile / remorque', w: 8, h: 6, glyph: 'SM' },
+    { type: 'pied_levage', label: 'Pied de levage / wind-up', w: 0.6, h: 0.6, glyph: 'WU', specs: HEIGHT_SPECS },
+    { type: 'moteur', label: 'Moteur / palan', w: 0.3, h: 0.3, glyph: 'MO', point: true },
+    { type: 'embase', label: 'Embase / base plate', w: 0.8, h: 0.8, glyph: 'BP', point: true },
   ],
   electricite: [
     { type: 'armoire_electrique', label: 'Armoire électrique', w: 0.8, h: 0.6, glyph: 'AE', specs: ELEC_SPECS },
@@ -145,8 +161,14 @@ export const OBJECT_CATALOG: Record<Discipline, ObjectDef[]> = {
 
 export const LINE_CATALOG: Record<Discipline, LineDef[]> = {
   implantation: [
+    { type: 'mur', label: 'Mur / cloison', thicknessM: 0.25 },
     { type: 'passage', label: 'Passage / circulation', dashed: true },
     { type: 'limite', label: 'Limite interne', dashed: true },
+  ],
+  structures: [
+    { type: 'truss', label: 'Pont / truss (élts 2 m)', unitLengthM: 2, specs: TRUSS_SPECS },
+    { type: 'echafaudage_ligne', label: 'Échafaudage en ligne (2,5 m)', unitLengthM: 2.5, specs: HEIGHT_SPECS },
+    { type: 'garde_corps', label: 'Garde-corps (2 m)', unitLengthM: 2 },
   ],
   electricite: [
     { type: 'cable_elec', label: 'Câble électrique', sectionable: true, specs: ELEC_SPECS },
