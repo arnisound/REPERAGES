@@ -1,5 +1,6 @@
 import { v4 as uuid } from 'uuid'
 import { db } from './db'
+import { offsetLatLng } from '../utils/geo'
 import type {
   Calibration,
   Discipline,
@@ -83,6 +84,20 @@ export async function deleteSiteObject(id: string) {
   await db.siteObjects.delete(id)
 }
 
+/** Clone an object next to the original (2 m south-east). */
+export async function duplicateSiteObject(id: string): Promise<SiteObject | undefined> {
+  const obj = await db.siteObjects.get(id)
+  if (!obj) return undefined
+  const copy: SiteObject = {
+    ...obj,
+    id: uuid(),
+    center: offsetLatLng(obj.center, 2, -2),
+    createdAt: Date.now(),
+  }
+  await db.siteObjects.add(copy)
+  return copy
+}
+
 // ---- Site lines (câbles, barrières, tuyaux…) ----
 
 export async function addSiteLine(data: {
@@ -103,6 +118,20 @@ export async function updateSiteLine(id: string, patch: Partial<SiteLine>) {
 
 export async function deleteSiteLine(id: string) {
   await db.siteLines.delete(id)
+}
+
+/** Clone a line next to the original (2 m south-east). */
+export async function duplicateSiteLine(id: string): Promise<SiteLine | undefined> {
+  const line = await db.siteLines.get(id)
+  if (!line) return undefined
+  const copy: SiteLine = {
+    ...line,
+    id: uuid(),
+    points: line.points.map((p) => offsetLatLng(p, 2, -2)),
+    createdAt: Date.now(),
+  }
+  await db.siteLines.add(copy)
+  return copy
 }
 
 // ---- Photos ----

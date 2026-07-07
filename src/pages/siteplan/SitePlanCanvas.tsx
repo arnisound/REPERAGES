@@ -6,7 +6,7 @@ import { DISCIPLINE_COLORS, POINT_CATEGORY_COLORS } from '../../types'
 import { findLineDef, findObjectDef } from '../../utils/catalog'
 import { formatMeters, fromLocalMeters, lineLengthMeters, polygonCenter, toLocalMeters } from '../../utils/geo'
 
-export type SitePlanMode = 'view' | 'place' | 'line'
+export type SitePlanMode = 'view' | 'place' | 'line' | 'multi'
 
 export type SitePlanBase = 'none' | 'osm' | 'sat'
 
@@ -22,10 +22,15 @@ interface Props {
   mode: SitePlanMode
   baseLayer: SitePlanBase
   selection: SiteSelection
+  /** Ids (objets et lignes) retenus en mode sélection multiple. */
+  multiIds: Set<string>
   lineDraft: LatLng[]
   onTap: (gps: LatLng) => void
   onSelect: (sel: SiteSelection) => void
+  onToggleMulti: (id: string) => void
   onObjectMove: (id: string, gps: LatLng) => void
+  /** Déplacement de groupe en mètres (est / nord) après glisser en mode multi. */
+  onGroupMove: (eastM: number, northM: number) => void
   onDraftPointMove: (index: number, gps: LatLng) => void
   onViewScaleChange?: (pxPerMeter: number) => void
 }
@@ -60,10 +65,13 @@ export default function SitePlanCanvas({
   mode,
   baseLayer,
   selection,
+  multiIds,
   lineDraft,
   onTap,
   onSelect,
+  onToggleMulti,
   onObjectMove,
+  onGroupMove,
   onDraftPointMove,
   onViewScaleChange,
 }: Props) {
@@ -179,8 +187,11 @@ export default function SitePlanCanvas({
     const pos = stage.getRelativePointerPosition()
     if (!pos) return
     if (mode === 'view') onSelect(null)
+    else if (mode === 'multi') return // empty tap keeps the multi selection
     else onTap(toGps(pos))
   }
+
+  const dragStart = useRef<{ x: number; y: number } | null>(null)
 
   // Map tile background (semi-transparent, to situate the plan on the terrain)
   const tileImages = useRef(new Map<string, HTMLImageElement>())
@@ -250,7 +261,7 @@ export default function SitePlanCanvas({
     return out
   }, [bbox, step, pad])
 
-  const shapesListening = mode === 'view'
+  const shapesListening = mode === 'view' || mode === 'multi'
 
   return (
     <div ref={containerRef} style={{ width: '100%', height: '100%', touchAction: 'none', background: '#0a0f1a' }}>
@@ -299,10 +310,16 @@ export default function SitePlanCanvas({
             .filter((l) => visibleLayers.has(l.layer))
             .map((l) => {
               const def = findLineDef(l.layer, l.lineType)
-              const selected = selection?.kind === 'line' && selection.id === l.id
+              const selected =
+                (selection?.kind === 'line' && selection.id === l.id) || (mode === 'multi' && multiIds.has(l.id))
               const pts = l.points.map(toCanvas)
               const mid = pts[Math.floor((pts.length - 1) / 2)]
               const length = lineLengthMeters(l.points)
+              const handleLineTap = (e: Konva.KonvaEventObject<Event>) => {
+                e.cancelBubble = true
+                if (mode === 'multi') onToggleMulti(l.id)
+                else onSelect({ kind: 'line', id: l.id })
+              }
               return (
                 <Group key={l.id} listening={shapesListening}>
                   <Line
@@ -313,14 +330,10 @@ export default function SitePlanCanvas({
                     dash={def?.dashed ? [px(10), px(8)] : undefined}
                     lineCap="round"
                     lineJoin="round"
-                    onClick={(e) => {
-                      e.cancelBubble = true
-                      onSelect({ kind: 'line', id: l.id })
-                    }}
-                    onTap={(e) => {
-                      e.cancelBubble = true
-                      onSelect({ kind: 'line', id: l.id })
-                    }}
+                    shadowColor={selected ? '#ffffff' : undefined}
+                    shadowBlur={selected ? px(8) : 0}
+                    onClick={handleLineTap}
+                    onTap={handleLineTap}
                   />
                   <Text
                     text={`${formatMeters(length)}${def?.unitLengthM ? ` · ${Math.ceil(length / def.unitLengthM)}×` : ''}`}
@@ -370,28 +383,43 @@ export default function SitePlanCanvas({
             .map((o) => {
               const def = findObjectDef(o.layer, o.symbolType)
               const color = DISCIPLINE_COLORS[o.layer]
-              const selected = selection?.kind === 'object' && selection.id === o.id
+              const inMulti = mode === 'multi' && multiIds.has(o.id)
+              const selected = (selection?.kind === 'object' && selection.id === o.id) || inMulti
               const c = toCanvas(o.center)
               const isPoint = def?.point ?? false
               const w = isPoint ? px(24) : o.widthM
               const h = isPoint ? px(24) : o.heightM
+              const handleObjectTap = (e: Konva.KonvaEventObject<Event>) => {
+                e.cancelBubble = true
+                if (mode === 'multi') onToggleMulti(o.id)
+                else onSelect({ kind: 'object', id: o.id })
+              }
               return (
                 <Group
                   key={o.id}
                   x={c.x}
                   y={c.y}
                   rotation={o.rotation}
-                  draggable={mode === 'view'}
+                  draggable={mode === 'view' || inMulti}
                   listening={shapesListening}
-                  onDragEnd={(e) => onObjectMove(o.id, toGps({ x: e.target.x(), y: e.target.y() }))}
-                  onClick={(e) => {
-                    e.cancelBubble = true
-                    onSelect({ kind: 'object', id: o.id })
+                  onDragStart={(e) => {
+                    dragStart.current = { x: e.target.x(), y: e.target.y() }
                   }}
-                  onTap={(e) => {
-                    e.cancelBubble = true
-                    onSelect({ kind: 'object', id: o.id })
+                  onDragEnd={(e) => {
+                    if (mode === 'multi') {
+                      const start = dragStart.current
+                      dragStart.current = null
+                      if (!start) return
+                      const dx = e.target.x() - start.x
+                      const dy = e.target.y() - start.y
+                      if (Math.abs(dx) < 1e-9 && Math.abs(dy) < 1e-9) return
+                      onGroupMove(dx, -dy)
+                    } else {
+                      onObjectMove(o.id, toGps({ x: e.target.x(), y: e.target.y() }))
+                    }
                   }}
+                  onClick={handleObjectTap}
+                  onTap={handleObjectTap}
                 >
                   {isPoint ? (
                     <Circle radius={w / 2} fill={color} stroke={selected ? '#fff' : '#0b1220'} strokeWidth={px(selected ? 3 : 1.5)} />

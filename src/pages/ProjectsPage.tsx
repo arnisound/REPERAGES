@@ -25,7 +25,7 @@ export default function ProjectsPage() {
     setImporting(true)
     try {
       const newId = await importProjectFromZip(file)
-      navigate(`/projects/${newId}`)
+      navigate(`/projects/${newId}/map`)
     } catch (err) {
       alert("Impossible d'importer ce fichier : " + (err as Error).message)
     } finally {
@@ -47,7 +47,7 @@ export default function ProjectsPage() {
     setClient('')
     setEventDate('')
     setVenueName('')
-    navigate(`/projects/${project.id}`)
+    navigate(`/projects/${project.id}/map`)
   }
 
   return (
@@ -74,7 +74,7 @@ export default function ProjectsPage() {
             {projects && projects.length > 0 && (
               <div className="list">
                 {projects.map((p) => (
-                  <div key={p.id} className="list-item" onClick={() => navigate(`/projects/${p.id}`)}>
+                  <div key={p.id} className="list-item" onClick={() => navigate(`/projects/${p.id}/map`)}>
                     <div className="list-item-body">
                       <div className="list-item-title">{p.name}</div>
                       <div className="list-item-sub">

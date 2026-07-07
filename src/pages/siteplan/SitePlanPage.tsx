@@ -1,9 +1,32 @@
 import { useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
-import { Cable, Check, Globe, Grid3x3, Layers, Map as MapIcon, Package, Pentagon, Undo2, X } from 'lucide-react'
+import {
+  Cable,
+  Check,
+  Copy,
+  Globe,
+  Grid3x3,
+  Layers,
+  Map as MapIcon,
+  MousePointerClick,
+  Package,
+  Pentagon,
+  Trash2,
+  Undo2,
+  X,
+} from 'lucide-react'
 import { db } from '../../db/db'
-import { addSiteLine, addSiteObject, updateSiteObject } from '../../db/actions'
+import {
+  addSiteLine,
+  addSiteObject,
+  deleteSiteLine,
+  deleteSiteObject,
+  duplicateSiteLine,
+  duplicateSiteObject,
+  updateSiteLine,
+  updateSiteObject,
+} from '../../db/actions'
 import {
   DISCIPLINES,
   DISCIPLINE_COLORS,
@@ -12,7 +35,7 @@ import {
   type LatLng,
 } from '../../types'
 import type { LineDef, ObjectDef } from '../../utils/catalog'
-import { formatArea, formatMeters, lineLengthMeters, polygonAreaM2 } from '../../utils/geo'
+import { formatArea, formatMeters, lineLengthMeters, offsetLatLng, polygonAreaM2 } from '../../utils/geo'
 import Modal from '../../components/Modal'
 import TopBar from '../../components/TopBar'
 import { LinePickerModal, ObjectPickerModal } from '../../components/CatalogPickers'
@@ -32,6 +55,7 @@ export default function SitePlanPage() {
 
   const [mode, setMode] = useState<SitePlanMode>('view')
   const [selection, setSelection] = useState<SiteSelection>(null)
+  const [multiIds, setMultiIds] = useState<Set<string>>(new Set())
   const [placeTarget, setPlaceTarget] = useState<{ layer: Discipline; def: ObjectDef } | null>(null)
   const [lineTarget, setLineTarget] = useState<{ layer: Discipline; def: LineDef } | null>(null)
   const [lineDraft, setLineDraft] = useState<LatLng[]>([])
@@ -80,6 +104,55 @@ export default function SitePlanPage() {
     setPlaceTarget(null)
     setLineTarget(null)
     setLineDraft([])
+    setMultiIds(new Set())
+  }
+
+  function toggleMulti(id: string) {
+    setMultiIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  async function handleGroupMove(eastM: number, northM: number) {
+    const moves: Promise<unknown>[] = []
+    for (const obj of objects) {
+      if (multiIds.has(obj.id)) {
+        moves.push(updateSiteObject(obj.id, { center: offsetLatLng(obj.center, eastM, northM) }))
+      }
+    }
+    for (const line of lines) {
+      if (multiIds.has(line.id)) {
+        moves.push(updateSiteLine(line.id, { points: line.points.map((p) => offsetLatLng(p, eastM, northM)) }))
+      }
+    }
+    await Promise.all(moves)
+  }
+
+  async function handleDuplicateMulti() {
+    const newIds = new Set<string>()
+    for (const id of multiIds) {
+      if (objects.some((o) => o.id === id)) {
+        const copy = await duplicateSiteObject(id)
+        if (copy) newIds.add(copy.id)
+      } else if (lines.some((l) => l.id === id)) {
+        const copy = await duplicateSiteLine(id)
+        if (copy) newIds.add(copy.id)
+      }
+    }
+    // Work continues on the copies: drag them to their spot right away.
+    setMultiIds(newIds)
+  }
+
+  async function handleDeleteMulti() {
+    if (!confirm(`Supprimer ${multiIds.size} élément(s) ?`)) return
+    for (const id of multiIds) {
+      if (objects.some((o) => o.id === id)) await deleteSiteObject(id)
+      else if (lines.some((l) => l.id === id)) await deleteSiteLine(id)
+    }
+    setMultiIds(new Set())
   }
 
   async function handleTap(gps: LatLng) {
@@ -129,10 +202,13 @@ export default function SitePlanPage() {
             mode={mode}
             baseLayer={baseLayer}
             selection={selection}
+            multiIds={multiIds}
             lineDraft={lineDraft}
             onTap={handleTap}
             onSelect={setSelection}
+            onToggleMulti={toggleMulti}
             onObjectMove={(id, gps) => updateSiteObject(id, { center: gps })}
+            onGroupMove={handleGroupMove}
             onDraftPointMove={(i, gps) => setLineDraft((d) => d.map((p, j) => (j === i ? gps : p)))}
             onViewScaleChange={setViewScale}
           />
@@ -176,6 +252,40 @@ export default function SitePlanPage() {
               >
                 <Cable size={18} /> Ligne
               </button>
+              <button
+                className="btn secondary"
+                onClick={() => {
+                  setSelection(null)
+                  setMultiIds(new Set())
+                  setMode('multi')
+                }}
+                type="button"
+              >
+                <MousePointerClick size={18} /> Sélection
+              </button>
+            </div>
+          )}
+
+          {mode === 'multi' && (
+            <div className="map-panel">
+              <div className="map-panel-row">
+                <span className="map-panel-title">
+                  {multiIds.size === 0
+                    ? 'Touchez les objets et lignes à sélectionner'
+                    : `${multiIds.size} sélectionné(s) — glissez un objet pour déplacer le groupe`}
+                </span>
+              </div>
+              <div className="map-panel-row">
+                <button className="btn secondary" onClick={handleDuplicateMulti} disabled={multiIds.size === 0} type="button">
+                  <Copy size={18} /> Dupliquer
+                </button>
+                <button className="btn danger" onClick={handleDeleteMulti} disabled={multiIds.size === 0} type="button">
+                  <Trash2 size={18} />
+                </button>
+                <button className="btn" onClick={resetTools} type="button">
+                  <Check size={18} /> Terminer
+                </button>
+              </div>
             </div>
           )}
 

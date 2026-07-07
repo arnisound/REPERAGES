@@ -1,5 +1,12 @@
-import { Move, Trash2, X } from 'lucide-react'
-import { deleteSiteLine, deleteSiteObject, updateSiteLine, updateSiteObject } from '../db/actions'
+import { Copy, Move, Trash2, X } from 'lucide-react'
+import {
+  deleteSiteLine,
+  deleteSiteObject,
+  duplicateSiteLine,
+  duplicateSiteObject,
+  updateSiteLine,
+  updateSiteObject,
+} from '../db/actions'
 import { DISCIPLINE_COLORS, DISCIPLINE_LABELS, type SiteLine, type SiteObject } from '../types'
 import { findLineDef, findObjectDef } from '../utils/catalog'
 import { formatMeters, lineLengthMeters } from '../utils/geo'
@@ -76,6 +83,9 @@ export function SiteObjectPanel({
           onBlur={(e) => updateSiteObject(object.id, { label: e.target.value || undefined })}
           style={{ flex: 1 }}
         />
+        <button className="btn secondary" onClick={() => duplicateSiteObject(object.id)} type="button" aria-label="Dupliquer">
+          <Copy size={18} />
+        </button>
         <button
           className="btn danger"
           onClick={async () => {
@@ -125,6 +135,9 @@ export function SiteLinePanel({ line, onClose }: { line: SiteLine; onClose: () =
           onBlur={(e) => updateSiteLine(line.id, { label: e.target.value || undefined })}
           style={{ flex: 1 }}
         />
+        <button className="btn secondary" onClick={() => duplicateSiteLine(line.id)} type="button" aria-label="Dupliquer">
+          <Copy size={18} />
+        </button>
         <button
           className="btn danger"
           onClick={async () => {

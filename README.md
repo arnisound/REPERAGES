@@ -11,6 +11,8 @@ Optimisée mobile en priorité, fonctionne aussi sur tablette et ordinateur. Ins
 - **Plan à l'échelle sur la carte** : placement d'objets aux dimensions réelles (tentes, chapiteaux, scènes, bars, armoires électriques, groupes électrogènes…) directement sur la zone, avec rotation et déplacement. L'échelle est donnée par le GPS — aucune calibration nécessaire.
 - **Lignes techniques** : tracé de câbles (élec, audio, DMX…), tuyaux et barrières ; longueur réelle calculée automatiquement, avec comptage des éléments (ex. barrières de 2 m, clôtures Heras).
 - **6 calques métier** : Implantation, Électricité, Eau/Plomberie, Audio, Lumière, Sécurité — activables individuellement.
+- **Multi-sélection** : sélectionner plusieurs objets/lignes sur le plan pour les déplacer en groupe, les dupliquer ou les supprimer.
+- **Récap matériel** : décompte automatique des objets par calque et des câbles par tirage, avec découpe optimale en tronçons du commerce (5/10/15/20/25/50 m, touret 100 m) — chute et longueur fournie calculées ; récap copiable en texte.
 - **Repères GPS** : points d'intérêt (accès, arrivée EDF, point d'eau, contraintes…) avec photos.
 - **Plans importés** (lieux intérieurs) : import d'une photo/plan, calibration 2 points, objets aux dimensions réelles et câbles avec longueur calculée.
 - **Photos** : prise directe (caméra) ou import, stockées localement.

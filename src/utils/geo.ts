@@ -23,6 +23,11 @@ export function fromLocalMeters(ref: LatLng, m: { x: number; y: number }): LatLn
   }
 }
 
+/** Offset a GPS point by the given distance in meters (east / north). */
+export function offsetLatLng(p: LatLng, eastM: number, northM: number): LatLng {
+  return fromLocalMeters(p, { x: eastM, y: northM })
+}
+
 /** Geodesic length of a polyline, in meters. */
 export function lineLengthMeters(points: LatLng[]): number {
   if (points.length < 2) return 0

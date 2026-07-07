@@ -5,6 +5,7 @@ import ProjectLayout from './pages/ProjectLayout'
 import ProjectInfoPage from './pages/ProjectInfoPage'
 import PointDetailPage from './pages/PointDetailPage'
 import PlansListPage from './pages/PlansListPage'
+import MaterialPage from './pages/MaterialPage'
 
 const MapPage = lazy(() => import('./pages/map/MapPage'))
 const PlanEditorPage = lazy(() => import('./pages/plan/PlanEditorPage'))
@@ -20,6 +21,7 @@ function App() {
           <Route path="map" element={<MapPage />} />
           <Route path="points/:pointId" element={<PointDetailPage />} />
           <Route path="plans" element={<PlansListPage />} />
+          <Route path="materiel" element={<MaterialPage />} />
         </Route>
         <Route path="/projects/:projectId/plans/:planId" element={<PlanEditorPage />} />
         <Route path="/projects/:projectId/site-plan" element={<SitePlanPage />} />
