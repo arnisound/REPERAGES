@@ -36,7 +36,7 @@ export default defineConfig({
         maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,
         runtimeCaching: [
           {
-            urlPattern: /^https:\/\/\{s\}\.tile\.openstreetmap\.org\/.*/,
+            urlPattern: /^https:\/\/[a-z]\.tile\.openstreetmap\.org\/.*/,
             handler: 'CacheFirst',
             options: {
               cacheName: 'osm-tiles',
@@ -44,10 +44,10 @@ export default defineConfig({
             },
           },
           {
-            urlPattern: /^https:\/\/[a-z]\.tile\.openstreetmap\.org\/.*/,
+            urlPattern: /^https:\/\/server\.arcgisonline\.com\/ArcGIS\/rest\/services\/World_Imagery\/.*/,
             handler: 'CacheFirst',
             options: {
-              cacheName: 'osm-tiles',
+              cacheName: 'sat-tiles',
               expiration: { maxEntries: 500, maxAgeSeconds: 60 * 60 * 24 * 30 },
             },
           },

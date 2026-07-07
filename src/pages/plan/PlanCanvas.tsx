@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
-import { Circle, Group, Image as KonvaImage, Layer, Line, RegularPolygon, Rect, Stage, Text } from 'react-konva'
+import { Circle, Group, Image as KonvaImage, Layer, Line, Rect, Stage, Text } from 'react-konva'
 import type Konva from 'konva'
 import useImage from 'use-image'
 import type { Discipline, PlanConnection, PlanObject } from '../../types'
 import { DISCIPLINE_COLORS } from '../../types'
-import { SYMBOL_CATALOG } from '../../utils/symbols'
+import { findObjectDef } from '../../utils/catalog'
 
 export type CanvasMode = 'view' | 'calibrate' | 'place' | 'cable'
 
@@ -16,6 +16,8 @@ interface Props {
   connections: PlanConnection[]
   visibleLayers: Set<Discipline>
   mode: CanvasMode
+  /** Pixels per meter once the plan is calibrated; null before calibration. */
+  pxPerMeter: number | null
   selectedObjectId: string | null
   selectedConnectionId: string | null
   calibrationPoints: { x: number; y: number }[]
@@ -24,11 +26,6 @@ interface Props {
   onObjectDragEnd: (id: string, x: number, y: number) => void
   onSelectObject: (id: string) => void
   onSelectConnection: (id: string) => void
-}
-
-function symbolShape(obj: PlanObject) {
-  const def = SYMBOL_CATALOG[obj.layer].find((s) => s.type === obj.symbolType)
-  return def
 }
 
 export default function PlanCanvas({
@@ -40,6 +37,7 @@ export default function PlanCanvas({
   visibleLayers,
   mode,
   selectedObjectId,
+  pxPerMeter,
   selectedConnectionId,
   calibrationPoints,
   cableDraftPoints,
@@ -226,14 +224,20 @@ export default function PlanCanvas({
             </>
           )}
 
-          {/* Objects */}
+          {/* Objects — drawn at real scale once the plan is calibrated */}
           {objects
             .filter((o) => visibleLayers.has(o.layer))
             .map((o) => {
-              const def = symbolShape(o)
+              const def = findObjectDef(o.layer, o.symbolType)
               const color = DISCIPLINE_COLORS[o.layer]
               const selected = o.id === selectedObjectId
-              const size = 22
+              const isPoint = def?.point ?? false
+              const widthM = o.widthM ?? def?.w ?? 1
+              const heightM = o.heightM ?? def?.h ?? 1
+              // Real footprint in image pixels when calibrated; fallback size before calibration.
+              const w = !isPoint && pxPerMeter ? widthM * pxPerMeter : 22
+              const h = !isPoint && pxPerMeter ? heightM * pxPerMeter : 22
+              const glyphSize = Math.max(8, Math.min(w, h) * 0.35)
               return (
                 <Group
                   key={o.id}
@@ -253,26 +257,35 @@ export default function PlanCanvas({
                     else onCanvasTap({ x: o.x, y: o.y }, o.id)
                   }}
                 >
-                  {def?.shape === 'circle' && (
-                    <Circle radius={size / 2} fill={color} stroke={selected ? '#fff' : '#0b1220'} strokeWidth={selected ? 3 : 1.5} data-object-id={o.id} />
-                  )}
-                  {def?.shape === 'square' && (
-                    <Rect x={-size / 2} y={-size / 2} width={size} height={size} fill={color} stroke={selected ? '#fff' : '#0b1220'} strokeWidth={selected ? 3 : 1.5} cornerRadius={3} data-object-id={o.id} />
-                  )}
-                  {def?.shape === 'triangle' && (
-                    <RegularPolygon sides={3} radius={size / 1.6} fill={color} stroke={selected ? '#fff' : '#0b1220'} strokeWidth={selected ? 3 : 1.5} data-object-id={o.id} />
-                  )}
-                  {def?.shape === 'diamond' && (
-                    <RegularPolygon sides={4} radius={size / 1.6} rotation={45} fill={color} stroke={selected ? '#fff' : '#0b1220'} strokeWidth={selected ? 3 : 1.5} data-object-id={o.id} />
+                  {isPoint ? (
+                    <Circle
+                      radius={11}
+                      fill={color}
+                      stroke={selected ? '#fff' : '#0b1220'}
+                      strokeWidth={selected ? 3 : 1.5}
+                    />
+                  ) : (
+                    <Rect
+                      x={-w / 2}
+                      y={-h / 2}
+                      width={w}
+                      height={h}
+                      fill={color}
+                      opacity={0.75}
+                      stroke={selected ? '#fff' : '#0b1220'}
+                      strokeWidth={selected ? 3 : 1.5}
+                      cornerRadius={Math.min(4, w / 8)}
+                    />
                   )}
                   <Text
                     text={def?.glyph ?? '?'}
-                    fontSize={9}
+                    fontSize={isPoint ? 9 : glyphSize}
+                    fontStyle="bold"
                     fill="#0b1220"
-                    width={size}
-                    height={size}
-                    offsetX={size / 2}
-                    offsetY={size / 2}
+                    width={isPoint ? 22 : w}
+                    height={isPoint ? 22 : h}
+                    offsetX={(isPoint ? 22 : w) / 2}
+                    offsetY={(isPoint ? 22 : h) / 2}
                     align="center"
                     verticalAlign="middle"
                     listening={false}
@@ -282,8 +295,7 @@ export default function PlanCanvas({
                       text={o.label}
                       fontSize={11}
                       fill="#fff"
-                      y={size / 2 + 4}
-                      offsetX={0}
+                      y={(isPoint ? 22 : h) / 2 + 4}
                       align="center"
                       width={120}
                       x={-60}

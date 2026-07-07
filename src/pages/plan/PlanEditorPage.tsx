@@ -14,7 +14,7 @@ import {
 } from '../../db/actions'
 import { usePhotoUrl } from '../../hooks/usePhotoUrl'
 import { DISCIPLINES, DISCIPLINE_COLORS, DISCIPLINE_LABELS, type Discipline } from '../../types'
-import { SYMBOL_CATALOG } from '../../utils/symbols'
+import { OBJECT_CATALOG, findObjectDef } from '../../utils/catalog'
 import { pxPerMeter, polylineLengthMeters, formatMeters } from '../../utils/scale'
 import TopBar from '../../components/TopBar'
 import Modal from '../../components/Modal'
@@ -127,7 +127,16 @@ export default function PlanEditorPage() {
       return
     }
     if (mode === 'place' && placeLayer && placeSymbolType) {
-      await addPlanObject({ planId, layer: placeLayer, symbolType: placeSymbolType, x: point.x, y: point.y })
+      const def = findObjectDef(placeLayer, placeSymbolType)
+      await addPlanObject({
+        planId,
+        layer: placeLayer,
+        symbolType: placeSymbolType,
+        x: point.x,
+        y: point.y,
+        widthM: def?.w,
+        heightM: def?.h,
+      })
       return
     }
     if (mode === 'cable') {
@@ -189,6 +198,7 @@ export default function PlanEditorPage() {
               connections={connections}
               visibleLayers={visibleLayers}
               mode={mode}
+              pxPerMeter={scale}
               selectedObjectId={selectedObjectId}
               selectedConnectionId={selectedConnectionId}
               calibrationPoints={calibrationPoints}
@@ -310,13 +320,13 @@ export default function PlanEditorPage() {
             ))}
           </div>
           <div className="list">
-            {SYMBOL_CATALOG[placeLayerTab].map((sym) => (
+            {OBJECT_CATALOG[placeLayerTab].map((sym) => (
               <div key={sym.type} className="list-item" onClick={() => startPlace(placeLayerTab, sym.type)}>
                 <span
                   style={{
                     width: 28,
                     height: 28,
-                    borderRadius: 6,
+                    borderRadius: sym.point ? '50%' : 6,
                     background: DISCIPLINE_COLORS[placeLayerTab],
                     display: 'flex',
                     alignItems: 'center',
@@ -329,7 +339,16 @@ export default function PlanEditorPage() {
                 >
                   {sym.glyph}
                 </span>
-                <span className="list-item-body">{sym.label}</span>
+                <div className="list-item-body">
+                  <div className="list-item-title" style={{ fontWeight: 500 }}>
+                    {sym.label}
+                  </div>
+                  {!sym.point && (
+                    <div className="list-item-sub">
+                      {sym.w} × {sym.h} m
+                    </div>
+                  )}
+                </div>
               </div>
             ))}
           </div>
@@ -387,8 +406,37 @@ export default function PlanEditorPage() {
         <Modal title="Objet" onClose={() => setSelectedObjectId(null)}>
           <div className="field">
             <label>Type</label>
-            <input disabled value={SYMBOL_CATALOG[selectedObject.layer].find((s) => s.type === selectedObject.symbolType)?.label ?? ''} />
+            <input disabled value={findObjectDef(selectedObject.layer, selectedObject.symbolType)?.label ?? selectedObject.symbolType} />
           </div>
+          {!findObjectDef(selectedObject.layer, selectedObject.symbolType)?.point && (
+            <div className="field">
+              <label>Dimensions réelles (m)</label>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                <input
+                  type="number"
+                  step={0.1}
+                  min={0.1}
+                  defaultValue={selectedObject.widthM ?? findObjectDef(selectedObject.layer, selectedObject.symbolType)?.w ?? 1}
+                  onBlur={(e) => updatePlanObject(selectedObject.id, { widthM: parseFloat(e.target.value) || 1 })}
+                  style={{ flex: 1 }}
+                />
+                ×
+                <input
+                  type="number"
+                  step={0.1}
+                  min={0.1}
+                  defaultValue={selectedObject.heightM ?? findObjectDef(selectedObject.layer, selectedObject.symbolType)?.h ?? 1}
+                  onBlur={(e) => updatePlanObject(selectedObject.id, { heightM: parseFloat(e.target.value) || 1 })}
+                  style={{ flex: 1 }}
+                />
+              </div>
+              {!scale && (
+                <p style={{ fontSize: 12, color: '#facc15', marginTop: 6 }}>
+                  Calibrez le plan pour que les objets s'affichent à leurs dimensions réelles.
+                </p>
+              )}
+            </div>
+          )}
           <div className="field">
             <label>Nom / repère</label>
             <input

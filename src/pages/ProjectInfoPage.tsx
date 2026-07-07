@@ -19,6 +19,10 @@ export default function ProjectInfoPage() {
     () => (projectId ? db.plans.where('projectId').equals(projectId).count() : 0),
     [projectId],
   )
+  const objectCount = useLiveQuery(
+    () => (projectId ? db.siteObjects.where('projectId').equals(projectId).count() : 0),
+    [projectId],
+  )
   const [saving, setSaving] = useState(false)
 
   if (!project || !projectId) return null
@@ -50,10 +54,14 @@ export default function ProjectInfoPage() {
       <TopBar title={project.name} onBack={() => navigate('/')} />
       <div className="app-body">
         <div className="page">
-          <div className="card" style={{ display: 'flex', gap: 16 }}>
+          <div className="card" style={{ display: 'flex', gap: 12 }}>
             <div style={{ flex: 1, textAlign: 'center' }}>
               <div style={{ fontSize: 22, fontWeight: 700 }}>{pointCount ?? 0}</div>
               <div style={{ fontSize: 12, color: 'var(--text-dim)' }}>Repères GPS</div>
+            </div>
+            <div style={{ flex: 1, textAlign: 'center' }}>
+              <div style={{ fontSize: 22, fontWeight: 700 }}>{objectCount ?? 0}</div>
+              <div style={{ fontSize: 12, color: 'var(--text-dim)' }}>Objets placés</div>
             </div>
             <div style={{ flex: 1, textAlign: 'center' }}>
               <div style={{ fontSize: 22, fontWeight: 700 }}>{planCount ?? 0}</div>

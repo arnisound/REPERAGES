@@ -4,12 +4,15 @@ import type {
   Calibration,
   Discipline,
   GeoPoint,
+  LatLng,
   Photo,
   Plan,
   PlanConnection,
   PlanObject,
   PointCategory,
   Project,
+  SiteLine,
+  SiteObject,
 } from '../types'
 
 // ---- Projects ----
@@ -42,12 +45,64 @@ export async function deleteProject(id: string) {
     await db.planObjects.where('planId').equals(plan.id).delete()
     await db.planConnections.where('planId').equals(plan.id).delete()
   }
-  await db.transaction('rw', db.projects, db.points, db.plans, db.photos, async () => {
+  await db.transaction('rw', [db.projects, db.points, db.plans, db.photos, db.siteObjects, db.siteLines], async () => {
     await db.points.where('projectId').equals(id).delete()
     await db.plans.where('projectId').equals(id).delete()
+    await db.siteObjects.where('projectId').equals(id).delete()
+    await db.siteLines.where('projectId').equals(id).delete()
     if (photoIds.size) await db.photos.bulkDelete([...photoIds])
     await db.projects.delete(id)
   })
+}
+
+export async function setProjectZone(id: string, zone: LatLng[] | undefined) {
+  await db.projects.update(id, { zone, updatedAt: Date.now() })
+}
+
+// ---- Site objects (objets à l'échelle sur la carte) ----
+
+export async function addSiteObject(data: {
+  projectId: string
+  layer: Discipline
+  symbolType: string
+  center: LatLng
+  widthM: number
+  heightM: number
+  label?: string
+}): Promise<SiteObject> {
+  const obj: SiteObject = { id: uuid(), rotation: 0, createdAt: Date.now(), ...data }
+  await db.siteObjects.add(obj)
+  return obj
+}
+
+export async function updateSiteObject(id: string, patch: Partial<SiteObject>) {
+  await db.siteObjects.update(id, patch)
+}
+
+export async function deleteSiteObject(id: string) {
+  await db.siteObjects.delete(id)
+}
+
+// ---- Site lines (câbles, barrières, tuyaux…) ----
+
+export async function addSiteLine(data: {
+  projectId: string
+  layer: Discipline
+  lineType: string
+  points: LatLng[]
+  label?: string
+}): Promise<SiteLine> {
+  const line: SiteLine = { id: uuid(), createdAt: Date.now(), ...data }
+  await db.siteLines.add(line)
+  return line
+}
+
+export async function updateSiteLine(id: string, patch: Partial<SiteLine>) {
+  await db.siteLines.update(id, patch)
+}
+
+export async function deleteSiteLine(id: string) {
+  await db.siteLines.delete(id)
 }
 
 // ---- Photos ----
@@ -142,6 +197,8 @@ export async function addPlanObject(data: {
   symbolType: string
   x: number
   y: number
+  widthM?: number
+  heightM?: number
   label?: string
 }): Promise<PlanObject> {
   const obj: PlanObject = { id: uuid(), rotation: 0, createdAt: Date.now(), ...data }

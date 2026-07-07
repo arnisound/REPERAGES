@@ -2,15 +2,18 @@ import JSZip from 'jszip'
 import { saveAs } from 'file-saver'
 import { v4 as uuid } from 'uuid'
 import { db } from '../db/db'
-import type { GeoPoint, Photo, Plan, PlanConnection, PlanObject, Project } from '../types'
+import type { GeoPoint, Photo, Plan, PlanConnection, PlanObject, Project, SiteLine, SiteObject } from '../types'
 
 interface BackupManifest {
-  version: 1
+  version: 1 | 2
   project: Project
   points: GeoPoint[]
   plans: Plan[]
   planObjects: PlanObject[]
   planConnections: PlanConnection[]
+  /** Absent from v1 backups. */
+  siteObjects?: SiteObject[]
+  siteLines?: SiteLine[]
   photoIds: string[]
 }
 
@@ -31,6 +34,8 @@ export async function exportProject(projectId: string) {
   const planConnections = (
     await Promise.all(plans.map((pl) => db.planConnections.where('planId').equals(pl.id).toArray()))
   ).flat()
+  const siteObjects = await db.siteObjects.where('projectId').equals(projectId).toArray()
+  const siteLines = await db.siteLines.where('projectId').equals(projectId).toArray()
 
   const photoIds = new Set<string>()
   points.forEach((p) => p.photoIds.forEach((id) => photoIds.add(id)))
@@ -48,12 +53,14 @@ export async function exportProject(projectId: string) {
   }
 
   const manifest: BackupManifest = {
-    version: 1,
+    version: 2,
     project,
     points,
     plans,
     planObjects,
     planConnections,
+    siteObjects,
+    siteLines,
     photoIds: [...photoIds],
   }
   zip.file('manifest.json', JSON.stringify({ ...manifest, photoFiles: photoMeta }, null, 2))
@@ -141,6 +148,22 @@ export async function importProjectFromZip(file: File): Promise<string> {
       planId: remap(conn.planId),
       fromObjectId: conn.fromObjectId ? remap(conn.fromObjectId) : null,
       toObjectId: conn.toObjectId ? remap(conn.toObjectId) : null,
+    })
+  }
+
+  for (const obj of manifest.siteObjects ?? []) {
+    await db.siteObjects.add({
+      ...obj,
+      id: remap(obj.id),
+      projectId: newProjectId,
+    })
+  }
+
+  for (const line of manifest.siteLines ?? []) {
+    await db.siteLines.add({
+      ...line,
+      id: remap(line.id),
+      projectId: newProjectId,
     })
   }
 

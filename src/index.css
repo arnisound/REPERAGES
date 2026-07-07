@@ -329,6 +329,129 @@ p {
   }
 }
 
+.map-panel {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px 16px calc(12px + var(--safe-bottom));
+  background: linear-gradient(to top, rgba(11, 18, 32, 0.97), rgba(11, 18, 32, 0.85));
+  backdrop-filter: blur(6px);
+  border-top: 1px solid var(--border);
+  z-index: 500;
+  max-height: 45%;
+  overflow-y: auto;
+}
+
+.map-panel-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.map-panel-row .btn {
+  min-height: 40px;
+  padding: 8px 14px;
+}
+
+.map-panel-title {
+  font-weight: 600;
+  font-size: 14px;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.map-panel input[type='number'],
+.map-panel input[type='text'] {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 10px;
+  min-height: 38px;
+}
+
+.map-panel input[type='range'] {
+  flex: 1;
+  accent-color: var(--accent);
+}
+
+.map-toolbar {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  gap: 8px;
+  padding: 10px 12px calc(10px + var(--safe-bottom));
+  background: linear-gradient(to top, rgba(11, 18, 32, 0.95), rgba(11, 18, 32, 0.7));
+  backdrop-filter: blur(6px);
+  z-index: 500;
+  overflow-x: auto;
+}
+
+.map-toolbar .btn {
+  min-height: 42px;
+  padding: 8px 14px;
+  flex-shrink: 0;
+}
+
+.map-fab-col {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  z-index: 500;
+}
+
+.map-fab-col .icon-btn {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+}
+
+.map-fab-col .icon-btn.active {
+  background: var(--accent);
+  color: #04202f;
+  border-color: var(--accent);
+}
+
+.map-chip {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 6px 10px;
+  font-size: 12px;
+  color: var(--text-dim);
+  z-index: 500;
+  max-width: 60%;
+}
+
+.site-obj-label {
+  background: rgba(11, 18, 32, 0.85);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  font-size: 11px;
+  padding: 1px 6px;
+  white-space: nowrap;
+  box-shadow: none;
+}
+
+.site-obj-label::before {
+  display: none;
+}
+
 .plan-toolbar {
   position: absolute;
   left: 0;

@@ -6,7 +6,7 @@ import ProjectInfoPage from './pages/ProjectInfoPage'
 import PointDetailPage from './pages/PointDetailPage'
 import PlansListPage from './pages/PlansListPage'
 
-const MapPage = lazy(() => import('./pages/MapPage'))
+const MapPage = lazy(() => import('./pages/map/MapPage'))
 const PlanEditorPage = lazy(() => import('./pages/plan/PlanEditorPage'))
 
 function App() {

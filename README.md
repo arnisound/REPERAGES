@@ -7,8 +7,12 @@ Optimisée mobile en priorité, fonctionne aussi sur tablette et ordinateur. Ins
 ## Fonctionnalités
 
 - **Événements** : un projet par événement (nom, client, lieu, date, notes).
-- **Carte GPS** : géolocalisation, placement de repères (accès, alimentation électrique, eau, réseau, contraintes…), fiche par repère avec photos.
-- **Plans techniques** : import d'une photo de lieu ou d'un plan existant, calibration à l'échelle réelle (2 points + distance connue), calques activables (Électricité, Plomberie, Réseau, Audio, Lumière), placement de symboles, tracé de câbles/lignes avec longueur calculée automatiquement.
+- **Carte du site** : sur place, on délimite la zone du site directement sur la carte (fond plan ou satellite) ; l'aire est calculée automatiquement.
+- **Plan à l'échelle sur la carte** : placement d'objets aux dimensions réelles (tentes, chapiteaux, scènes, bars, armoires électriques, groupes électrogènes…) directement sur la zone, avec rotation et déplacement. L'échelle est donnée par le GPS — aucune calibration nécessaire.
+- **Lignes techniques** : tracé de câbles (élec, audio, DMX…), tuyaux et barrières ; longueur réelle calculée automatiquement, avec comptage des éléments (ex. barrières de 2 m, clôtures Heras).
+- **6 calques métier** : Implantation, Électricité, Eau/Plomberie, Audio, Lumière, Sécurité — activables individuellement.
+- **Repères GPS** : points d'intérêt (accès, arrivée EDF, point d'eau, contraintes…) avec photos.
+- **Plans importés** (lieux intérieurs) : import d'une photo/plan, calibration 2 points, objets aux dimensions réelles et câbles avec longueur calculée.
 - **Photos** : prise directe (caméra) ou import, stockées localement.
 - **Sauvegarde / transfert** : export d'un événement en `.zip` (données + photos), ré-import sur un autre appareil.
 
