@@ -377,8 +377,9 @@ export default function SitePlanCanvas({
               )
             })}
 
-          {/* Objects */}
-          {objects
+          {/* Objects — render order follows the stacking order (z, plus grand = dessus) */}
+          {[...objects]
+            .sort((a, b) => (a.z ?? 0) - (b.z ?? 0) || a.createdAt - b.createdAt)
             .filter((o) => visibleLayers.has(o.layer))
             .map((o) => {
               const view = objectView(o)

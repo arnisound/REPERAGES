@@ -320,7 +320,7 @@ export default function PlanEditorPage() {
             ))}
           </div>
           <div className="list">
-            {OBJECT_CATALOG[placeLayerTab].map((sym) => (
+            {OBJECT_CATALOG[placeLayerTab].filter((d) => !d.legacy).map((sym) => (
               <div key={sym.type} className="list-item" onClick={() => startPlace(placeLayerTab, sym.type)}>
                 <span
                   style={{

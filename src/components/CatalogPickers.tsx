@@ -225,7 +225,7 @@ export function ObjectPickerModal({
                 </button>
               </div>
             ))}
-            {OBJECT_CATALOG[tab].map((def) => (
+            {OBJECT_CATALOG[tab].filter((d) => !d.legacy).map((def) => (
               <div
                 key={def.type}
                 className="list-item"
@@ -291,7 +291,7 @@ export function LinePickerModal({
         <>
           <DisciplineTabs value={tab} onChange={setTab} />
           <div className="list">
-            {LINE_CATALOG[tab].map((def) => (
+            {LINE_CATALOG[tab].filter((d) => !d.legacy).map((def) => (
               <div key={def.type} className="list-item" onClick={() => (def.specs ? setSpecDef(def) : onPick(tab, def))}>
                 <span
                   style={{

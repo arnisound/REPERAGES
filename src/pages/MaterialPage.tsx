@@ -17,6 +17,8 @@ import TopBar from '../components/TopBar'
 
 interface ObjectGroup {
   label: string
+  /** Dimensions réelles (affichées pour tout ce qui a une emprise au sol). */
+  dims?: string
   count: number
 }
 
@@ -80,11 +82,12 @@ export default function MaterialPage() {
   const { objectGroups, lineGroups } = useMemo(() => {
     const objectGroups = new Map<Discipline, Map<string, ObjectGroup>>()
     const lineGroups = new Map<Discipline, Map<string, LineGroup>>()
-    const objGroup = (layer: Discipline, label: string) => {
+    const objGroup = (layer: Discipline, label: string, dims?: string) => {
       let byLabel = objectGroups.get(layer)
       if (!byLabel) objectGroups.set(layer, (byLabel = new Map()))
-      let g = byLabel.get(label)
-      if (!g) byLabel.set(label, (g = { label, count: 0 }))
+      const key = `${label}|${dims ?? ''}`
+      let g = byLabel.get(key)
+      if (!g) byLabel.set(key, (g = { label, dims, count: 0 }))
       return g
     }
     const lnGroup = (layer: Discipline, label: string, init: Omit<LineGroup, 'label' | 'runs' | 'uncalibratedRuns'>) => {
@@ -95,13 +98,19 @@ export default function MaterialPage() {
       return g
     }
 
+    const fmtDim = (n: number) => (Number.isInteger(n) ? String(n) : n.toFixed(1).replace('.', ','))
     for (const o of siteObjects) {
       const view = objectView(o)
-      objGroup(o.layer, `${view.label}${o.spec ? ` ${o.spec}` : ''}`).count++
+      const dims = view.isPoint ? undefined : `${fmtDim(o.widthM)} × ${fmtDim(o.heightM)} m`
+      objGroup(o.layer, `${view.label}${o.spec ? ` ${o.spec}` : ''}`, dims).count++
     }
     for (const o of planObjects) {
       const def = findObjectDef(o.layer, o.symbolType)
-      objGroup(o.layer, `${def?.label ?? o.symbolType} (plan importé)`).count++
+      const dims =
+        def?.point || (o.widthM === undefined && o.heightM === undefined)
+          ? undefined
+          : `${fmtDim(o.widthM ?? def?.w ?? 1)} × ${fmtDim(o.heightM ?? def?.h ?? 1)} m`
+      objGroup(o.layer, `${def?.label ?? o.symbolType} (plan importé)`, dims).count++
     }
 
     for (const l of siteLines) {
@@ -135,7 +144,7 @@ export default function MaterialPage() {
       const lns = [...(lineGroups.get(d)?.values() ?? [])]
       if (!objs.length && !lns.length) continue
       out.push(DISCIPLINE_LABELS[d].toUpperCase())
-      for (const g of objs) out.push(`- ${g.label} × ${g.count}`)
+      for (const g of objs) out.push(`- ${g.label}${g.dims ? ` (${g.dims})` : ''} × ${g.count}`)
       for (const g of lns) {
         const total = g.runs.reduce((s, r) => s + r, 0)
         let line = `- ${g.label} : ${g.runs.length} tirage(s), ${formatMeters(total)}`
@@ -229,17 +238,23 @@ export default function MaterialPage() {
                   <div style={{ marginBottom: lns.length ? 14 : 0 }}>
                     {objs.map((g) => (
                       <div
-                        key={g.label}
+                        key={`${g.label}|${g.dims ?? ''}`}
                         style={{
                           display: 'flex',
                           justifyContent: 'space-between',
+                          alignItems: 'baseline',
                           gap: 12,
                           padding: '6px 0',
                           borderBottom: '1px solid var(--border)',
                           fontSize: 14,
                         }}
                       >
-                        <span>{g.label}</span>
+                        <span>
+                          {g.label}
+                          {g.dims && (
+                            <span style={{ color: 'var(--text-dim)', fontSize: 12 }}> · {g.dims}</span>
+                          )}
+                        </span>
                         <strong>× {g.count}</strong>
                       </div>
                     ))}

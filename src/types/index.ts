@@ -138,6 +138,8 @@ export interface SiteObject {
   isPoint?: boolean
   /** Spécification technique (ex : TRI 32A, Cat 6). */
   spec?: string
+  /** Ordre d'empilement sur le plan (plus grand = dessus). */
+  z?: number
   createdAt: number
 }
 

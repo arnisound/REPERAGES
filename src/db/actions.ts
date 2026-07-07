@@ -90,6 +90,24 @@ export async function deleteSiteObject(id: string) {
   await db.siteObjects.delete(id)
 }
 
+/** Place l'objet au-dessus de tous les autres objets du projet. */
+export async function bringSiteObjectToFront(id: string) {
+  const obj = await db.siteObjects.get(id)
+  if (!obj) return
+  const all = await db.siteObjects.where('projectId').equals(obj.projectId).toArray()
+  const maxZ = Math.max(0, ...all.map((o) => o.z ?? 0))
+  await db.siteObjects.update(id, { z: maxZ + 1 })
+}
+
+/** Place l'objet derrière tous les autres objets du projet. */
+export async function sendSiteObjectToBack(id: string) {
+  const obj = await db.siteObjects.get(id)
+  if (!obj) return
+  const all = await db.siteObjects.where('projectId').equals(obj.projectId).toArray()
+  const minZ = Math.min(0, ...all.map((o) => o.z ?? 0))
+  await db.siteObjects.update(id, { z: minZ - 1 })
+}
+
 /** Clone an object next to the original (2 m south-east). */
 export async function duplicateSiteObject(id: string): Promise<SiteObject | undefined> {
   const obj = await db.siteObjects.get(id)

@@ -1,9 +1,11 @@
-import { Copy, Move, Trash2, X } from 'lucide-react'
+import { ChevronsDown, ChevronsUp, Copy, Move, Trash2, X } from 'lucide-react'
 import {
+  bringSiteObjectToFront,
   deleteSiteLine,
   deleteSiteObject,
   duplicateSiteLine,
   duplicateSiteObject,
+  sendSiteObjectToBack,
   updateSiteLine,
   updateSiteObject,
 } from '../db/actions'
@@ -71,6 +73,15 @@ export function SiteObjectPanel({
       </div>
       <div className="map-panel-row" style={{ fontSize: 13, color: 'var(--text-dim)' }}>
         <Move size={15} /> {moveHint}
+      </div>
+      <div className="map-panel-row">
+        <label style={{ fontSize: 13, color: 'var(--text-dim)' }}>Position</label>
+        <button className="btn secondary" onClick={() => bringSiteObjectToFront(object.id)} type="button">
+          <ChevronsUp size={16} /> Dessus
+        </button>
+        <button className="btn secondary" onClick={() => sendSiteObjectToBack(object.id)} type="button">
+          <ChevronsDown size={16} /> Dessous
+        </button>
       </div>
       <div className="map-panel-row">
         <label style={{ fontSize: 13, color: 'var(--text-dim)' }}>Couleur</label>

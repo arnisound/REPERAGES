@@ -333,8 +333,9 @@ export default function MapPage() {
               )
             })}
 
-          {/* Site objects at real scale */}
-          {siteObjects
+          {/* Site objects at real scale — keyed on z so restacking re-adds layers in order */}
+          {[...siteObjects]
+            .sort((a, b) => (a.z ?? 0) - (b.z ?? 0) || a.createdAt - b.createdAt)
             .filter((o) => visibleLayers.has(o.layer))
             .map((o) => {
               const view = objectView(o)
@@ -343,7 +344,7 @@ export default function MapPage() {
               if (view.isPoint) {
                 return (
                   <Marker
-                    key={o.id}
+                    key={`${o.id}:${o.z ?? 0}`}
                     position={[o.center.lat, o.center.lng]}
                     icon={pointObjectIcon(color, view.glyph, selected)}
                     eventHandlers={{
@@ -361,7 +362,7 @@ export default function MapPage() {
               const corners = rectangleCorners(o.center, o.widthM, o.heightM, o.rotation)
               return (
                 <Polygon
-                  key={o.id}
+                  key={`${o.id}:${o.z ?? 0}`}
                   positions={corners.map((p) => [p.lat, p.lng] as [number, number])}
                   pathOptions={{
                     color: selected ? '#ffffff' : color,

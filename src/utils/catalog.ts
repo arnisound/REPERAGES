@@ -15,6 +15,8 @@ export interface ObjectDef {
   glyph: string
   /** Spécifications proposées au placement (ex : calibres électriques). */
   specs?: string[]
+  /** Retiré du sélecteur mais toujours résolu pour les objets déjà placés. */
+  legacy?: boolean
 }
 
 export interface LineDef {
@@ -27,6 +29,8 @@ export interface LineDef {
   sectionable?: boolean
   /** Spécifications proposées au tracé (ex : calibres électriques). */
   specs?: string[]
+  /** Retiré du sélecteur mais toujours résolu pour les lignes déjà tracées. */
+  legacy?: boolean
 }
 
 export const ELEC_SPECS = [
@@ -70,7 +74,7 @@ export const OBJECT_CATALOG: Record<Discipline, ObjectDef[]> = {
     { type: 'coffret', label: 'Coffret de distribution', w: 0.4, h: 0.3, glyph: 'C', point: true, specs: ELEC_SPECS },
     { type: 'groupe_electrogene', label: 'Groupe électrogène 2×1 m', w: 2, h: 1, glyph: 'GE' },
     { type: 'prise_mono', label: 'Point de raccordement', w: 0.2, h: 0.2, glyph: '~', point: true, specs: ELEC_SPECS },
-    { type: 'prise_tri', label: 'Raccordement triphasé 32/63A', w: 0.2, h: 0.2, glyph: '3~', point: true },
+    { type: 'prise_tri', label: 'Raccordement triphasé 32/63A', w: 0.2, h: 0.2, glyph: '3~', point: true, legacy: true },
     { type: 'enrouleur', label: 'Enrouleur / multiprise', w: 0.3, h: 0.3, glyph: 'EN', point: true },
     { type: 'projecteur_chantier', label: 'Projecteur de zone / chantier', w: 0.4, h: 0.4, glyph: 'PZ', point: true },
     { type: 'eclairage_secours', label: 'Mât / éclairage de zone', w: 0.5, h: 0.5, glyph: 'M', point: true },
@@ -146,7 +150,8 @@ export const LINE_CATALOG: Record<Discipline, LineDef[]> = {
   ],
   electricite: [
     { type: 'cable_elec', label: 'Câble électrique', sectionable: true, specs: ELEC_SPECS },
-    { type: 'cable_tri', label: 'Câble triphasé', sectionable: true },
+    // Remplacé par « Câble électrique » + calibre (TRI 32A, POWERLOCK…)
+    { type: 'cable_tri', label: 'Câble triphasé', sectionable: true, legacy: true },
     { type: 'passage_cable', label: 'Passage de câbles protégé', dashed: true },
   ],
   eau: [
