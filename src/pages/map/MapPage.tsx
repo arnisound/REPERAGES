@@ -3,31 +3,9 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { MapContainer, Marker, Polygon, Polyline, Popup, TileLayer, Tooltip, useMap, useMapEvents } from 'react-leaflet'
 import L, { type Map as LeafletMap } from 'leaflet'
-import {
-  Cable,
-  Check,
-  Globe,
-  Layers,
-  LocateFixed,
-  MapPin,
-  Move,
-  Package,
-  Pentagon,
-  Trash2,
-  Undo2,
-  X,
-} from 'lucide-react'
+import { Check, Globe, Layers, LocateFixed, MapPin, Pentagon, Trash2, Undo2, X } from 'lucide-react'
 import { db } from '../../db/db'
-import {
-  addSiteLine,
-  addSiteObject,
-  createPoint,
-  deleteSiteLine,
-  deleteSiteObject,
-  setProjectZone,
-  updateSiteLine,
-  updateSiteObject,
-} from '../../db/actions'
+import { createPoint, setProjectZone, updateSiteObject } from '../../db/actions'
 import { categoryDivIcon, userLocationIcon } from '../../utils/mapIcons'
 import { getCurrentPosition, useWatchPosition } from '../../hooks/useGeolocation'
 import {
@@ -42,14 +20,15 @@ import {
   type SiteLine,
   type SiteObject,
 } from '../../types'
-import { LINE_CATALOG, OBJECT_CATALOG, findLineDef, findObjectDef, type LineDef, type ObjectDef } from '../../utils/catalog'
-import { formatArea, formatMeters, lineLengthMeters, polygonAreaM2, rectangleCorners } from '../../utils/geo'
+import { findLineDef, findObjectDef } from '../../utils/catalog'
+import { formatArea, polygonAreaM2, rectangleCorners } from '../../utils/geo'
 import Modal from '../../components/Modal'
 import TopBar from '../../components/TopBar'
+import { SiteLinePanel, SiteObjectPanel } from '../../components/SitePanels'
 
 const DEFAULT_CENTER: [number, number] = [46.6034, 1.8883] // France
 
-type Mode = 'view' | 'zone' | 'place' | 'line' | 'point'
+type Mode = 'view' | 'zone' | 'point'
 
 type Selection = { kind: 'object'; id: string } | { kind: 'line'; id: string } | null
 
@@ -159,16 +138,9 @@ export default function MapPage() {
 
   const [mode, setMode] = useState<Mode>('view')
   const [zoneDraft, setZoneDraft] = useState<LatLng[]>([])
-  const [placeTarget, setPlaceTarget] = useState<{ layer: Discipline; def: ObjectDef } | null>(null)
-  const [lineTarget, setLineTarget] = useState<{ layer: Discipline; def: LineDef } | null>(null)
-  const [lineDraft, setLineDraft] = useState<LatLng[]>([])
   const [selection, setSelection] = useState<Selection>(null)
 
   const [showLayerSheet, setShowLayerSheet] = useState(false)
-  const [showObjectPicker, setShowObjectPicker] = useState(false)
-  const [showLinePicker, setShowLinePicker] = useState(false)
-  const [pickerTab, setPickerTab] = useState<Discipline>('implantation')
-
   const [visibleLayers, setVisibleLayers] = useState<Set<Discipline>>(new Set(DISCIPLINES))
   const [showPoints, setShowPoints] = useState(true)
   const [showZone, setShowZone] = useState(true)
@@ -181,21 +153,15 @@ export default function MapPage() {
   const zone = project?.zone
   const zoneArea = useMemo(() => (zone && zone.length >= 3 ? polygonAreaM2(zone) : null), [zone])
   const draftArea = zoneDraft.length >= 3 ? polygonAreaM2(zoneDraft) : null
-  const draftLineLength = lineDraft.length >= 2 ? lineLengthMeters(lineDraft) : null
 
   const selectedObject: SiteObject | null =
     selection?.kind === 'object' ? siteObjects.find((o) => o.id === selection.id) ?? null : null
   const selectedLine: SiteLine | null =
     selection?.kind === 'line' ? siteLines.find((l) => l.id === selection.id) ?? null : null
-  const selectedLineLength = selectedLine ? lineLengthMeters(selectedLine.points) : null
-  const selectedLineDef = selectedLine ? findLineDef(selectedLine.layer, selectedLine.lineType) : undefined
 
   function resetTools() {
     setMode('view')
     setZoneDraft([])
-    setPlaceTarget(null)
-    setLineTarget(null)
-    setLineDraft([])
   }
 
   function startZoneEdit() {
@@ -212,21 +178,6 @@ export default function MapPage() {
       setZoneDraft((d) => [...d, p])
       return
     }
-    if (mode === 'place' && placeTarget) {
-      await addSiteObject({
-        projectId,
-        layer: placeTarget.layer,
-        symbolType: placeTarget.def.type,
-        center: p,
-        widthM: placeTarget.def.w,
-        heightM: placeTarget.def.h,
-      })
-      return
-    }
-    if (mode === 'line') {
-      setLineDraft((d) => [...d, p])
-      return
-    }
     if (mode === 'point') {
       setPendingPoint(p)
       return
@@ -238,18 +189,14 @@ export default function MapPage() {
     if (!projectId || zoneDraft.length < 3) return
     await setProjectZone(projectId, zoneDraft)
     resetTools()
+    // The zone is now the site plan's work surface — take the user there.
+    navigate(`/projects/${projectId}/site-plan`)
   }
 
   async function clearZone() {
     if (!projectId) return
     if (!confirm('Effacer la zone du site ?')) return
     await setProjectZone(projectId, undefined)
-    resetTools()
-  }
-
-  async function finishLine() {
-    if (!projectId || !lineTarget || lineDraft.length < 2) return
-    await addSiteLine({ projectId, layer: lineTarget.layer, lineType: lineTarget.def.type, points: lineDraft })
     resetTools()
   }
 
@@ -282,7 +229,7 @@ export default function MapPage() {
   }
 
   function selectShape(sel: Selection, e: L.LeafletMouseEvent) {
-    if (mode !== 'view') return // let the tap fall through to the map (add vertex / place object)
+    if (mode !== 'view') return // let the tap fall through to the map (add vertex / point)
     // Passing the Leaflet event (not originalEvent) marks it as stopped for
     // Leaflet's own dispatcher, which suppresses the subsequent map click.
     L.DomEvent.stopPropagation(e as unknown as Event)
@@ -365,7 +312,7 @@ export default function MapPage() {
               />
             ))}
 
-          {/* Site lines */}
+          {/* Site lines (drawn in the site plan, displayed here georeferenced) */}
           {siteLines
             .filter((l) => visibleLayers.has(l.layer))
             .map((l) => {
@@ -385,29 +332,6 @@ export default function MapPage() {
                 />
               )
             })}
-
-          {/* Line being drawn */}
-          {lineDraft.length >= 1 && (
-            <Polyline
-              positions={lineDraft.map((p) => [p.lat, p.lng] as [number, number])}
-              pathOptions={{ color: '#ffffff', weight: 3, dashArray: '10 6' }}
-            />
-          )}
-          {mode === 'line' &&
-            lineDraft.map((p, i) => (
-              <Marker
-                key={i}
-                position={[p.lat, p.lng]}
-                icon={vertexIcon}
-                draggable
-                eventHandlers={{
-                  dragend: (e) => {
-                    const ll = (e.target as L.Marker).getLatLng()
-                    setLineDraft((d) => d.map((v, j) => (j === i ? { lat: ll.lat, lng: ll.lng } : v)))
-                  },
-                }}
-              />
-            ))}
 
           {/* Site objects at real scale */}
           {siteObjects
@@ -515,27 +439,7 @@ export default function MapPage() {
         {mode === 'view' && !selection && (
           <div className="map-toolbar">
             <button className="btn secondary" onClick={startZoneEdit} type="button">
-              <Pentagon size={18} /> Zone
-            </button>
-            <button
-              className="btn secondary"
-              onClick={() => {
-                setSelection(null)
-                setShowObjectPicker(true)
-              }}
-              type="button"
-            >
-              <Package size={18} /> Objet
-            </button>
-            <button
-              className="btn secondary"
-              onClick={() => {
-                setSelection(null)
-                setShowLinePicker(true)
-              }}
-              type="button"
-            >
-              <Cable size={18} /> Ligne
+              <Pentagon size={18} /> {zone && zone.length >= 3 ? 'Modifier la zone' : 'Délimiter la zone'}
             </button>
             <button
               className="btn secondary"
@@ -545,8 +449,13 @@ export default function MapPage() {
               }}
               type="button"
             >
-              <MapPin size={18} /> Repère
+              <MapPin size={18} /> Repère GPS
             </button>
+            {zone && zone.length >= 3 && (
+              <button className="btn" onClick={() => navigate(`/projects/${projectId}/site-plan`)} type="button">
+                Ouvrir le plan
+              </button>
+            )}
           </div>
         )}
 
@@ -568,7 +477,7 @@ export default function MapPage() {
                 <Undo2 size={18} />
               </button>
               <button className="btn" onClick={saveZone} disabled={zoneDraft.length < 3} type="button">
-                <Check size={18} /> Valider la zone
+                <Check size={18} /> Valider → plan
               </button>
               {zone && zone.length >= 3 && (
                 <button className="btn danger" onClick={clearZone} type="button">
@@ -582,55 +491,14 @@ export default function MapPage() {
           </div>
         )}
 
-        {mode === 'place' && placeTarget && (
-          <div className="map-panel">
-            <div className="map-panel-row">
-              <span className="map-panel-title">
-                Touchez la carte pour placer : {placeTarget.def.label}
-              </span>
-              <button className="btn" onClick={resetTools} type="button">
-                <Check size={18} /> Terminer
-              </button>
-            </div>
-          </div>
-        )}
-
-        {mode === 'line' && lineTarget && (
-          <div className="map-panel">
-            <div className="map-panel-row">
-              <span className="map-panel-title">
-                {lineTarget.def.label}
-                {draftLineLength !== null && ` · ${formatMeters(draftLineLength)}`}
-                {draftLineLength !== null &&
-                  lineTarget.def.unitLengthM &&
-                  ` · ${Math.ceil(draftLineLength / lineTarget.def.unitLengthM)} éléments`}
-              </span>
-            </div>
-            <div className="map-panel-row">
-              <button
-                className="btn secondary"
-                onClick={() => setLineDraft((d) => d.slice(0, -1))}
-                disabled={lineDraft.length === 0}
-                type="button"
-              >
-                <Undo2 size={18} />
-              </button>
-              <button className="btn" onClick={finishLine} disabled={lineDraft.length < 2} type="button">
-                <Check size={18} /> Terminer
-              </button>
-              <button className="btn secondary" onClick={resetTools} type="button">
-                <X size={18} />
-              </button>
-            </div>
-          </div>
-        )}
-
         {mode === 'point' && !pendingPoint && (
           <div className="map-panel">
             <div className="map-panel-row">
-              <span className="map-panel-title">Touchez la carte pour poser un repère GPS</span>
+              <span className="map-panel-title">Touchez la carte pour poser un repère GPS à la main</span>
+            </div>
+            <div className="map-panel-row">
               <button
-                className="btn secondary"
+                className="btn"
                 onClick={async () => {
                   try {
                     const pos = position ?? (await getCurrentPosition())
@@ -641,7 +509,7 @@ export default function MapPage() {
                 }}
                 type="button"
               >
-                <LocateFixed size={18} /> À ma position
+                <LocateFixed size={18} /> À ma position (GPS)
               </button>
               <button className="btn secondary" onClick={resetTools} type="button">
                 <X size={18} />
@@ -650,136 +518,15 @@ export default function MapPage() {
           </div>
         )}
 
-        {/* Selected object panel */}
+        {/* Selection panels (shared with the site plan) */}
         {selectedObject && mode === 'view' && (
-          <div className="map-panel">
-            <div className="map-panel-row">
-              <span
-                className="badge"
-                style={{
-                  background: DISCIPLINE_COLORS[selectedObject.layer] + '33',
-                  color: DISCIPLINE_COLORS[selectedObject.layer],
-                }}
-              >
-                {DISCIPLINE_LABELS[selectedObject.layer]}
-              </span>
-              <span className="map-panel-title">
-                {findObjectDef(selectedObject.layer, selectedObject.symbolType)?.label ?? selectedObject.symbolType}
-              </span>
-              <button className="icon-btn" onClick={() => setSelection(null)} type="button" aria-label="Fermer">
-                <X size={18} />
-              </button>
-            </div>
-            <div className="map-panel-row" style={{ fontSize: 13, color: 'var(--text-dim)' }}>
-              <Move size={15} /> Glissez la poignée bleue pour déplacer l'objet
-            </div>
-            {!findObjectDef(selectedObject.layer, selectedObject.symbolType)?.point && (
-              <>
-                <div className="map-panel-row">
-                  <label style={{ fontSize: 13, color: 'var(--text-dim)' }}>Dimensions (m)</label>
-                  <input
-                    type="number"
-                    step={0.1}
-                    min={0.1}
-                    value={selectedObject.widthM}
-                    onChange={(e) => updateSiteObject(selectedObject.id, { widthM: parseFloat(e.target.value) || 0.1 })}
-                    style={{ width: 80 }}
-                  />
-                  ×
-                  <input
-                    type="number"
-                    step={0.1}
-                    min={0.1}
-                    value={selectedObject.heightM}
-                    onChange={(e) => updateSiteObject(selectedObject.id, { heightM: parseFloat(e.target.value) || 0.1 })}
-                    style={{ width: 80 }}
-                  />
-                </div>
-                <div className="map-panel-row">
-                  <label style={{ fontSize: 13, color: 'var(--text-dim)' }}>Rotation</label>
-                  <input
-                    type="range"
-                    min={-180}
-                    max={180}
-                    step={1}
-                    value={selectedObject.rotation}
-                    onChange={(e) => updateSiteObject(selectedObject.id, { rotation: parseInt(e.target.value, 10) })}
-                  />
-                  <span style={{ fontSize: 13, width: 44, textAlign: 'right' }}>{selectedObject.rotation}°</span>
-                </div>
-              </>
-            )}
-            <div className="map-panel-row">
-              <input
-                type="text"
-                placeholder="Nom (ex : Bar principal)"
-                defaultValue={selectedObject.label ?? ''}
-                onBlur={(e) => updateSiteObject(selectedObject.id, { label: e.target.value || undefined })}
-                style={{ flex: 1 }}
-              />
-              <button
-                className="btn danger"
-                onClick={async () => {
-                  await deleteSiteObject(selectedObject.id)
-                  setSelection(null)
-                }}
-                type="button"
-              >
-                <Trash2 size={18} />
-              </button>
-            </div>
-          </div>
+          <SiteObjectPanel
+            object={selectedObject}
+            moveHint="Glissez la poignée bleue pour déplacer l'objet"
+            onClose={() => setSelection(null)}
+          />
         )}
-
-        {/* Selected line panel */}
-        {selectedLine && mode === 'view' && (
-          <div className="map-panel">
-            <div className="map-panel-row">
-              <span
-                className="badge"
-                style={{
-                  background: DISCIPLINE_COLORS[selectedLine.layer] + '33',
-                  color: DISCIPLINE_COLORS[selectedLine.layer],
-                }}
-              >
-                {DISCIPLINE_LABELS[selectedLine.layer]}
-              </span>
-              <span className="map-panel-title">{selectedLineDef?.label ?? selectedLine.lineType}</span>
-              <button className="icon-btn" onClick={() => setSelection(null)} type="button" aria-label="Fermer">
-                <X size={18} />
-              </button>
-            </div>
-            <div className="map-panel-row" style={{ fontSize: 14 }}>
-              Longueur : <strong>{selectedLineLength !== null ? formatMeters(selectedLineLength) : '—'}</strong>
-              {selectedLineDef?.unitLengthM && selectedLineLength !== null && (
-                <>
-                  {' '}
-                  · <strong>{Math.ceil(selectedLineLength / selectedLineDef.unitLengthM)}</strong> éléments de{' '}
-                  {selectedLineDef.unitLengthM} m
-                </>
-              )}
-            </div>
-            <div className="map-panel-row">
-              <input
-                type="text"
-                placeholder="Nom (ex : Alim scène)"
-                defaultValue={selectedLine.label ?? ''}
-                onBlur={(e) => updateSiteLine(selectedLine.id, { label: e.target.value || undefined })}
-                style={{ flex: 1 }}
-              />
-              <button
-                className="btn danger"
-                onClick={async () => {
-                  await deleteSiteLine(selectedLine.id)
-                  setSelection(null)
-                }}
-                type="button"
-              >
-                <Trash2 size={18} />
-              </button>
-            </div>
-          </div>
-        )}
+        {selectedLine && mode === 'view' && <SiteLinePanel line={selectedLine} onClose={() => setSelection(null)} />}
       </div>
 
       {/* Layer visibility sheet */}
@@ -825,120 +572,6 @@ export default function MapPage() {
               <span style={{ width: 12, height: 12, borderRadius: '50%', background: '#a78bfa', flexShrink: 0 }} />
               <span className="list-item-body">Zone du site</span>
             </label>
-          </div>
-        </Modal>
-      )}
-
-      {/* Object picker */}
-      {showObjectPicker && (
-        <Modal title="Placer un objet" onClose={() => setShowObjectPicker(false)}>
-          <div style={{ display: 'flex', gap: 8, overflowX: 'auto', marginBottom: 16, paddingBottom: 4 }}>
-            {DISCIPLINES.map((d) => (
-              <button
-                key={d}
-                type="button"
-                onClick={() => setPickerTab(d)}
-                className={pickerTab === d ? 'btn' : 'btn secondary'}
-                style={{ flexShrink: 0, minHeight: 38, padding: '8px 14px' }}
-              >
-                {DISCIPLINE_LABELS[d]}
-              </button>
-            ))}
-          </div>
-          <div className="list">
-            {OBJECT_CATALOG[pickerTab].map((def) => (
-              <div
-                key={def.type}
-                className="list-item"
-                onClick={() => {
-                  setPlaceTarget({ layer: pickerTab, def })
-                  setShowObjectPicker(false)
-                  setMode('place')
-                }}
-              >
-                <span
-                  style={{
-                    width: 30,
-                    height: 30,
-                    borderRadius: def.point ? '50%' : 6,
-                    background: DISCIPLINE_COLORS[pickerTab],
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    fontSize: 10,
-                    color: '#0b1220',
-                    fontWeight: 700,
-                    flexShrink: 0,
-                  }}
-                >
-                  {def.glyph}
-                </span>
-                <div className="list-item-body">
-                  <div className="list-item-title" style={{ fontWeight: 500 }}>
-                    {def.label}
-                  </div>
-                  {!def.point && (
-                    <div className="list-item-sub">
-                      {def.w} × {def.h} m
-                    </div>
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
-        </Modal>
-      )}
-
-      {/* Line picker */}
-      {showLinePicker && (
-        <Modal title="Tracer une ligne" onClose={() => setShowLinePicker(false)}>
-          <div style={{ display: 'flex', gap: 8, overflowX: 'auto', marginBottom: 16, paddingBottom: 4 }}>
-            {DISCIPLINES.map((d) => (
-              <button
-                key={d}
-                type="button"
-                onClick={() => setPickerTab(d)}
-                className={pickerTab === d ? 'btn' : 'btn secondary'}
-                style={{ flexShrink: 0, minHeight: 38, padding: '8px 14px' }}
-              >
-                {DISCIPLINE_LABELS[d]}
-              </button>
-            ))}
-          </div>
-          <div className="list">
-            {LINE_CATALOG[pickerTab].map((def) => (
-              <div
-                key={def.type}
-                className="list-item"
-                onClick={() => {
-                  setLineTarget({ layer: pickerTab, def })
-                  setLineDraft([])
-                  setShowLinePicker(false)
-                  setMode('line')
-                }}
-              >
-                <span
-                  style={{
-                    width: 30,
-                    height: 6,
-                    borderRadius: 3,
-                    background: DISCIPLINE_COLORS[pickerTab],
-                    flexShrink: 0,
-                    ...(def.dashed
-                      ? {
-                          background: `repeating-linear-gradient(90deg, ${DISCIPLINE_COLORS[pickerTab]} 0 6px, transparent 6px 10px)`,
-                        }
-                      : {}),
-                  }}
-                />
-                <div className="list-item-body">
-                  <div className="list-item-title" style={{ fontWeight: 500 }}>
-                    {def.label}
-                  </div>
-                  {def.unitLengthM && <div className="list-item-sub">Comptage auto par éléments de {def.unitLengthM} m</div>}
-                </div>
-              </div>
-            ))}
           </div>
         </Modal>
       )}

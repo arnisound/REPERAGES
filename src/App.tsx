@@ -8,6 +8,7 @@ import PlansListPage from './pages/PlansListPage'
 
 const MapPage = lazy(() => import('./pages/map/MapPage'))
 const PlanEditorPage = lazy(() => import('./pages/plan/PlanEditorPage'))
+const SitePlanPage = lazy(() => import('./pages/siteplan/SitePlanPage'))
 
 function App() {
   return (
@@ -21,6 +22,7 @@ function App() {
           <Route path="plans" element={<PlansListPage />} />
         </Route>
         <Route path="/projects/:projectId/plans/:planId" element={<PlanEditorPage />} />
+        <Route path="/projects/:projectId/site-plan" element={<SitePlanPage />} />
       </Routes>
     </Suspense>
   )
