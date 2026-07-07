@@ -144,7 +144,19 @@ export interface SiteObject {
   spec?: string
   /** Ordre d'empilement sur le plan (plus grand = dessus). */
   z?: number
+  /** Puissance électrique consommée, en kW (bilan de puissance). */
+  powerKw?: number
+  /** Suivi de montage. */
+  status?: InstallStatus
   createdAt: number
+}
+
+export type InstallStatus = 'todo' | 'done' | 'checked'
+
+export const INSTALL_STATUS_LABELS: Record<InstallStatus, string> = {
+  todo: 'À installer',
+  done: 'Installé',
+  checked: 'Vérifié',
 }
 
 /** Geo-referenced polyline: cable run, water pipe, barrier row, fence… */
@@ -158,6 +170,8 @@ export interface SiteLine {
   notes?: string
   /** Spécification technique (ex : TRI 63A, Cat 6a). */
   spec?: string
+  /** Suivi de montage. */
+  status?: InstallStatus
   createdAt: number
 }
 

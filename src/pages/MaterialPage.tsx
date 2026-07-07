@@ -115,6 +115,7 @@ export default function MaterialPage() {
 
     for (const l of siteLines) {
       const def = findLineDef(l.layer, l.lineType)
+      if (def?.noRecap) continue
       const g = lnGroup(l.layer, `${def?.label ?? l.lineType}${l.spec ? ` ${l.spec}` : ''}`, {
         unitLengthM: def?.unitLengthM,
         sectionable: def?.sectionable ?? false,
@@ -137,6 +138,28 @@ export default function MaterialPage() {
   const hasAnything =
     [...objectGroups.values()].some((m) => m.size > 0) || [...lineGroups.values()].some((m) => m.size > 0)
 
+  // Bilan de puissance (kW) par calque et progression de montage
+  const powerByLayer = new Map<Discipline, number>()
+  let powerTotal = 0
+  for (const o of siteObjects) {
+    if (!o.powerKw) continue
+    powerByLayer.set(o.layer, (powerByLayer.get(o.layer) ?? 0) + o.powerKw)
+    powerTotal += o.powerKw
+  }
+  const progressByLayer = new Map<Discipline, { done: number; total: number }>()
+  for (const item of [...siteObjects, ...siteLines]) {
+    const def = 'lineType' in item ? findLineDef(item.layer, item.lineType) : undefined
+    if (def?.noRecap) continue
+    const p = progressByLayer.get(item.layer) ?? { done: 0, total: 0 }
+    p.total++
+    if (item.status === 'done' || item.status === 'checked') p.done++
+    progressByLayer.set(item.layer, p)
+  }
+  const progressTotal = [...progressByLayer.values()].reduce(
+    (acc, p) => ({ done: acc.done + p.done, total: acc.total + p.total }),
+    { done: 0, total: 0 },
+  )
+
   function buildSummaryText(): string {
     const out: string[] = [`RÉCAP MATÉRIEL — ${project?.name ?? ''}`, '']
     for (const d of DISCIPLINES) {
@@ -144,6 +167,8 @@ export default function MaterialPage() {
       const lns = [...(lineGroups.get(d)?.values() ?? [])]
       if (!objs.length && !lns.length) continue
       out.push(DISCIPLINE_LABELS[d].toUpperCase())
+      const layerPower = powerByLayer.get(d)
+      if (layerPower) out.push(`Puissance : ${layerPower.toFixed(1)} kW`)
       for (const g of objs) out.push(`- ${g.label}${g.dims ? ` (${g.dims})` : ''} × ${g.count}`)
       for (const g of lns) {
         const total = g.runs.reduce((s, r) => s + r, 0)
@@ -166,6 +191,8 @@ export default function MaterialPage() {
       }
       out.push('')
     }
+    if (powerTotal > 0) out.push(`PUISSANCE TOTALE : ${powerTotal.toFixed(1)} kW`)
+    if (progressTotal.total > 0) out.push(`MONTAGE : ${progressTotal.done}/${progressTotal.total} installés`)
     return out.join('\n')
   }
 
@@ -223,15 +250,49 @@ export default function MaterialPage() {
             </div>
           )}
 
+          {hasAnything && (powerTotal > 0 || progressTotal.total > 0) && (
+            <div className="card" style={{ marginBottom: 12, display: 'flex', gap: 12 }}>
+              {powerTotal > 0 && (
+                <div style={{ flex: 1, textAlign: 'center' }}>
+                  <div style={{ fontSize: 22, fontWeight: 700 }}>{powerTotal.toFixed(1)} kW</div>
+                  <div style={{ fontSize: 12, color: 'var(--text-dim)' }}>Puissance totale</div>
+                </div>
+              )}
+              {progressTotal.total > 0 && (
+                <div style={{ flex: 1, textAlign: 'center' }}>
+                  <div style={{ fontSize: 22, fontWeight: 700 }}>
+                    {progressTotal.done}/{progressTotal.total}
+                  </div>
+                  <div style={{ fontSize: 12, color: 'var(--text-dim)' }}>Montage</div>
+                </div>
+              )}
+            </div>
+          )}
+
           {DISCIPLINES.map((d) => {
             const objs = [...(objectGroups.get(d)?.values() ?? [])]
             const lns = [...(lineGroups.get(d)?.values() ?? [])]
             if (!objs.length && !lns.length) return null
+            const layerPower = powerByLayer.get(d)
+            const progress = progressByLayer.get(d)
             return (
               <div className="card" key={d} style={{ marginBottom: 12 }}>
                 <h3 style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 15, marginBottom: 10 }}>
                   <span style={{ width: 12, height: 12, borderRadius: '50%', background: DISCIPLINE_COLORS[d] }} />
-                  {DISCIPLINE_LABELS[d]}
+                  <span style={{ flex: 1 }}>{DISCIPLINE_LABELS[d]}</span>
+                  {layerPower ? (
+                    <span style={{ fontSize: 12, color: DISCIPLINE_COLORS.electricite }}>{layerPower.toFixed(1)} kW</span>
+                  ) : null}
+                  {progress && progress.total > 0 && (
+                    <span
+                      style={{
+                        fontSize: 12,
+                        color: progress.done === progress.total ? 'var(--success)' : 'var(--text-dim)',
+                      }}
+                    >
+                      {progress.done}/{progress.total}
+                    </span>
+                  )}
                 </h3>
 
                 {objs.length > 0 && (

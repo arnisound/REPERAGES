@@ -6,11 +6,16 @@ import { DISCIPLINE_COLORS, POINT_CATEGORY_COLORS } from '../../types'
 import { findLineDef, objectView } from '../../utils/catalog'
 import { formatMeters, fromLocalMeters, lineLengthMeters, polygonCenter, toLocalMeters } from '../../utils/geo'
 
-export type SitePlanMode = 'view' | 'place' | 'line' | 'multi'
+export type SitePlanMode = 'view' | 'place' | 'line' | 'multi' | 'check'
 
 export type SitePlanBase = 'none' | 'osm' | 'sat'
 
 export type SiteSelection = { kind: 'object'; id: string } | { kind: 'line'; id: string } | null
+
+/** Poignée d'export : capture la vue courante du plan en PNG haute résolution. */
+export interface SitePlanCanvasHandle {
+  exportImage: (targetWidthPx?: number) => string | null
+}
 
 /** Plan importé géoréférencé, affiché sous les objets. */
 export interface OverlayItem {
@@ -47,6 +52,7 @@ interface Props {
   onGroupMove: (eastM: number, northM: number) => void
   onDraftPointMove: (index: number, gps: LatLng) => void
   onViewScaleChange?: (pxPerMeter: number) => void
+  exportRef?: React.MutableRefObject<SitePlanCanvasHandle | null>
 }
 
 /** Pick a grid step so cells stay readable at the current zoom. */
@@ -55,6 +61,8 @@ export function gridStep(viewScale: number): number {
   for (const s of steps) if (s * viewScale >= 42) return s
   return 500
 }
+
+const STATUS_COLORS = { done: '#34d399', checked: '#38bdf8' } as const
 
 // Web Mercator tile math (slippy map tiles)
 function lngToTileX(lng: number, z: number) {
@@ -90,6 +98,7 @@ export default function SitePlanCanvas({
   onGroupMove,
   onDraftPointMove,
   onViewScaleChange,
+  exportRef,
 }: Props) {
   const stageRef = useRef<Konva.Stage>(null)
   const containerRef = useRef<HTMLDivElement>(null)
@@ -203,11 +212,27 @@ export default function SitePlanCanvas({
     const pos = stage.getRelativePointerPosition()
     if (!pos) return
     if (mode === 'view') onSelect(null)
-    else if (mode === 'multi') return // empty tap keeps the multi selection
+    else if (mode === 'multi' || mode === 'check') return // empty tap keeps the selection/statuses
     else onTap(toGps(pos))
   }
 
   const dragStart = useRef<{ x: number; y: number } | null>(null)
+
+  // Export : capture de la vue courante (WYSIWYG) en haute résolution
+  useEffect(() => {
+    if (!exportRef) return
+    exportRef.current = {
+      exportImage: (targetWidthPx = 2400) => {
+        const stage = stageRef.current
+        if (!stage || !stage.width()) return null
+        const pixelRatio = Math.max(1, Math.min(6, targetWidthPx / stage.width()))
+        return stage.toDataURL({ pixelRatio, mimeType: 'image/png' })
+      },
+    }
+    return () => {
+      exportRef.current = null
+    }
+  }, [exportRef])
 
   // Map tile background (semi-transparent, to situate the plan on the terrain)
   const tileImages = useRef(new Map<string, HTMLImageElement>())
@@ -277,7 +302,7 @@ export default function SitePlanCanvas({
     return out
   }, [bbox, step, pad])
 
-  const shapesListening = mode === 'view' || mode === 'multi'
+  const shapesListening = mode === 'view' || mode === 'multi' || mode === 'check'
 
   return (
     <div ref={containerRef} style={{ width: '100%', height: '100%', touchAction: 'none', background: '#0a0f1a' }}>
@@ -359,7 +384,7 @@ export default function SitePlanCanvas({
               const length = lineLengthMeters(l.points)
               const handleLineTap = (e: Konva.KonvaEventObject<Event>) => {
                 e.cancelBubble = true
-                if (mode === 'multi') onToggleMulti(l.id)
+                if (mode === 'multi' || mode === 'check') onToggleMulti(l.id)
                 else onSelect({ kind: 'line', id: l.id })
               }
               return (
@@ -378,11 +403,11 @@ export default function SitePlanCanvas({
                     onTap={handleLineTap}
                   />
                   <Text
-                    text={`${formatMeters(length)}${def?.unitLengthM ? ` · ${Math.ceil(length / def.unitLengthM)}×` : ''}`}
+                    text={`${l.status === 'done' || l.status === 'checked' ? '✓ ' : ''}${formatMeters(length)}${def?.unitLengthM ? ` · ${Math.ceil(length / def.unitLengthM)}×` : ''}`}
                     x={mid.x + px(8)}
                     y={mid.y - px(18)}
                     fontSize={px(12)}
-                    fill="#e8edf6"
+                    fill={l.status === 'done' || l.status === 'checked' ? STATUS_COLORS[l.status] : '#e8edf6'}
                     shadowColor="#000"
                     shadowBlur={px(4)}
                     listening={false}
@@ -434,7 +459,7 @@ export default function SitePlanCanvas({
               const h = isPoint ? px(24) : o.heightM
               const handleObjectTap = (e: Konva.KonvaEventObject<Event>) => {
                 e.cancelBubble = true
-                if (mode === 'multi') onToggleMulti(o.id)
+                if (mode === 'multi' || mode === 'check') onToggleMulti(o.id)
                 else onSelect({ kind: 'object', id: o.id })
               }
               return (
@@ -505,6 +530,23 @@ export default function SitePlanCanvas({
                       shadowBlur={px(4)}
                       listening={false}
                     />
+                  )}
+                  {(o.status === 'done' || o.status === 'checked') && (
+                    <Group x={w / 2} y={-h / 2} listening={false}>
+                      <Circle radius={px(8)} fill={STATUS_COLORS[o.status]} stroke="#0b1220" strokeWidth={px(1.5)} />
+                      <Text
+                        text="✓"
+                        fontSize={px(11)}
+                        fontStyle="bold"
+                        fill="#0b1220"
+                        width={px(16)}
+                        height={px(16)}
+                        offsetX={px(8)}
+                        offsetY={px(8)}
+                        align="center"
+                        verticalAlign="middle"
+                      />
+                    </Group>
                   )}
                 </Group>
               )

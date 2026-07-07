@@ -21,6 +21,10 @@ Optimisée mobile en priorité, fonctionne aussi sur tablette et ordinateur. Ins
 - **Repères GPS** : points d'intérêt (accès, arrivée EDF, point d'eau, contraintes…) avec photos.
 - **Plans importés** (lieux intérieurs) : import d'une photo/plan, calibration 2 points, objets aux dimensions réelles et câbles avec longueur calculée.
 - **Photos** : prise directe (caméra) ou import, stockées localement.
+- **Mesures et cotes** : outil règle pour mesurer au doigt, cotes permanentes en mètres sur le plan.
+- **Suivi de montage** : statut par élément (à installer / installé / vérifié), mode pointage sur le plan le jour J, progression par calque au récap.
+- **Bilan de puissance** : puissance kW par objet, totaux par calque et global.
+- **Export du plan** : image PNG haute résolution ou dossier imprimable (PDF natif) avec légende des calques, échelle et infos de l'événement.
 - **Sauvegarde / transfert** : export d'un événement en `.zip` (données + photos), ré-import sur un autre appareil.
 
 ## Développement

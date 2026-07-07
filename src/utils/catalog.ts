@@ -33,6 +33,8 @@ export interface LineDef {
   legacy?: boolean
   /** Épaisseur réelle du trait en mètres (murs, cloisons) — sinon épaisseur d'écran fixe. */
   thicknessM?: number
+  /** Exclu du récap matériel (cotes, annotations). */
+  noRecap?: boolean
 }
 
 export const HEIGHT_SPECS = ['H 2 m', 'H 3 m', 'H 4 m', 'H 6 m', 'H 8 m', 'H 10 m']
@@ -162,6 +164,7 @@ export const OBJECT_CATALOG: Record<Discipline, ObjectDef[]> = {
 export const LINE_CATALOG: Record<Discipline, LineDef[]> = {
   implantation: [
     { type: 'mur', label: 'Mur / cloison', thicknessM: 0.25 },
+    { type: 'cote', label: 'Cote / mesure', dashed: true, noRecap: true },
     { type: 'passage', label: 'Passage / circulation', dashed: true },
     { type: 'limite', label: 'Limite interne', dashed: true },
   ],

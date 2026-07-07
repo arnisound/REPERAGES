@@ -1,10 +1,13 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import { saveAs } from 'file-saver'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
 import {
   Cable,
   Check,
+  ClipboardCheck,
   Copy,
+  Download,
   Globe,
   Grid3x3,
   Layers,
@@ -12,6 +15,7 @@ import {
   MousePointerClick,
   Package,
   Pentagon,
+  Ruler,
   Trash2,
   Undo2,
   X,
@@ -38,7 +42,7 @@ import {
   type Discipline,
   type LatLng,
 } from '../../types'
-import type { LineDef, PlacePayload } from '../../utils/catalog'
+import { LINE_CATALOG, type LineDef, type PlacePayload } from '../../utils/catalog'
 import { formatArea, formatMeters, lineLengthMeters, offsetLatLng, polygonAreaM2, polygonCenter } from '../../utils/geo'
 import Modal from '../../components/Modal'
 import TopBar from '../../components/TopBar'
@@ -48,6 +52,7 @@ import SitePlanCanvas, {
   gridStep,
   type OverlayItem,
   type SitePlanBase,
+  type SitePlanCanvasHandle,
   type SitePlanMode,
   type SiteSelection,
 } from './SitePlanCanvas'
@@ -81,6 +86,8 @@ export default function SitePlanPage() {
   const [viewScale, setViewScale] = useState(10)
   const [overlayEditId, setOverlayEditId] = useState<string | null>(null)
   const [photoUrls, setPhotoUrls] = useState<Map<string, string>>(new Map())
+  const exportHandle = useRef<SitePlanCanvasHandle | null>(null)
+  const [showExport, setShowExport] = useState(false)
 
   // Object URLs des images de plans superposés (créées/révoquées avec la visibilité)
   const visibleOverlayPlans = plans.filter((p) => p.overlay?.visible || p.id === overlayEditId)
@@ -207,6 +214,16 @@ export default function SitePlanPage() {
   }
 
   function toggleMulti(id: string) {
+    if (mode === 'check') {
+      // Mode montage : chaque tap fait avancer le statut.
+      const obj = objects.find((o) => o.id === id)
+      const line = obj ? undefined : lines.find((l) => l.id === id)
+      const current = (obj ?? line)?.status ?? 'todo'
+      const next = current === 'todo' ? 'done' : current === 'done' ? 'checked' : 'todo'
+      if (obj) updateSiteObject(id, { status: next })
+      else if (line) updateSiteLine(id, { status: next })
+      return
+    }
     setMultiIds((prev) => {
       const next = new Set(prev)
       if (next.has(id)) next.delete(id)
@@ -279,6 +296,62 @@ export default function SitePlanPage() {
     }
   }
 
+  function dataUrlToBlob(dataUrl: string): Blob {
+    const [head, body] = dataUrl.split(',')
+    const mime = head.match(/data:(.*?);/)?.[1] ?? 'image/png'
+    const bin = atob(body)
+    const bytes = new Uint8Array(bin.length)
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i)
+    return new Blob([bytes], { type: mime })
+  }
+
+  function exportPng() {
+    const dataUrl = exportHandle.current?.exportImage(2400)
+    if (!dataUrl) return
+    const name = (project?.name ?? 'plan').replace(/[^a-z0-9]+/gi, '-').toLowerCase()
+    saveAs(dataUrlToBlob(dataUrl), `plan-${name}.png`)
+    setShowExport(false)
+  }
+
+  function exportPrint() {
+    const dataUrl = exportHandle.current?.exportImage(2400)
+    if (!dataUrl || !zone) return
+    const legend = DISCIPLINES.filter((d) => visibleLayers.has(d))
+      .map(
+        (d) =>
+          `<span style="display:inline-flex;align-items:center;gap:6px;margin-right:14px">
+            <span style="width:11px;height:11px;border-radius:50%;background:${DISCIPLINE_COLORS[d]};display:inline-block"></span>${DISCIPLINE_LABELS[d]}
+          </span>`,
+      )
+      .join('')
+    const win = window.open('', '_blank')
+    if (!win) {
+      alert("Impossible d'ouvrir la vue d'impression (bloqueur de popups ?)")
+      return
+    }
+    win.document.write(`<!doctype html><html lang="fr"><head><meta charset="utf-8">
+      <title>Plan — ${project?.name ?? ''}</title>
+      <style>
+        body { font-family: -apple-system, 'Segoe UI', Roboto, sans-serif; margin: 24px; color: #111; }
+        h1 { font-size: 20px; margin: 0 0 4px; }
+        .meta { color: #555; font-size: 13px; margin-bottom: 12px; }
+        img { width: 100%; border: 1px solid #ccc; border-radius: 6px; }
+        .legend { margin-top: 10px; font-size: 13px; }
+        @media print { .noprint { display: none; } }
+      </style></head><body>
+      <h1>${project?.name ?? 'Plan du site'}</h1>
+      <div class="meta">
+        ${project?.venueName ? project.venueName + ' · ' : ''}${project?.eventDate ?? ''}
+        · Zone : ${formatArea(polygonAreaM2(zone))} · Grille : ${gridStep(viewScale)} m · Nord en haut
+      </div>
+      <img src="${dataUrl}" alt="Plan du site" />
+      <div class="legend">${legend}</div>
+      <p class="noprint" style="margin-top:16px"><button onclick="window.print()" style="padding:10px 18px;font-size:15px">Imprimer / Enregistrer en PDF</button></p>
+    </body></html>`)
+    win.document.close()
+    setShowExport(false)
+  }
+
   async function finishLine() {
     if (!projectId || !lineTarget || lineDraft.length < 2) return
     await addSiteLine({
@@ -298,9 +371,14 @@ export default function SitePlanPage() {
           title="Plan du site"
           onBack={() => navigate(`/projects/${projectId}/plans`)}
           action={
-            <button className="icon-btn" onClick={() => setShowLayerSheet(true)} aria-label="Calques" type="button">
-              <Layers size={20} />
-            </button>
+            <>
+              <button className="icon-btn" onClick={() => setShowExport(true)} aria-label="Exporter" type="button">
+                <Download size={20} />
+              </button>
+              <button className="icon-btn" onClick={() => setShowLayerSheet(true)} aria-label="Calques" type="button">
+                <Layers size={20} />
+              </button>
+            </>
           }
         />
         <div style={{ position: 'relative', flex: 1, minHeight: 0 }}>
@@ -328,6 +406,7 @@ export default function SitePlanPage() {
             onGroupMove={handleGroupMove}
             onDraftPointMove={(i, gps) => setLineDraft((d) => d.map((p, j) => (j === i ? gps : p)))}
             onViewScaleChange={setViewScale}
+            exportRef={exportHandle}
           />
 
           <div className="map-chip">
@@ -438,6 +517,50 @@ export default function SitePlanPage() {
               >
                 <MousePointerClick size={18} /> Sélection
               </button>
+              <button
+                className="btn secondary"
+                onClick={() => {
+                  const def = LINE_CATALOG.implantation.find((l) => l.type === 'cote')
+                  if (!def) return
+                  setLineTarget({ layer: 'implantation', def })
+                  setLineDraft([])
+                  setSelection(null)
+                  setMode('line')
+                }}
+                type="button"
+              >
+                <Ruler size={18} /> Mesurer
+              </button>
+              <button
+                className="btn secondary"
+                onClick={() => {
+                  setSelection(null)
+                  setMode('check')
+                }}
+                type="button"
+              >
+                <ClipboardCheck size={18} /> Montage
+              </button>
+            </div>
+          )}
+
+          {mode === 'check' && (
+            <div className="map-panel">
+              <div className="map-panel-row">
+                <span className="map-panel-title">
+                  Montage : {[...objects, ...lines].filter((i) => i.status === 'done' || i.status === 'checked').length}
+                  {' / '}
+                  {objects.length + lines.length} — tapez un élément pour avancer son statut
+                </span>
+              </div>
+              <div className="map-panel-row" style={{ fontSize: 12, color: 'var(--text-dim)' }}>
+                1 tap = installé (✓ vert) · 2 taps = vérifié (✓ bleu) · 3 taps = à faire
+              </div>
+              <div className="map-panel-row">
+                <button className="btn block" onClick={resetTools} type="button">
+                  <Check size={18} /> Terminer
+                </button>
+              </div>
             </div>
           )}
 
@@ -578,6 +701,22 @@ export default function SitePlanPage() {
           }}
           onClose={() => setShowLinePicker(false)}
         />
+      )}
+
+      {showExport && (
+        <Modal title="Exporter le plan" onClose={() => setShowExport(false)}>
+          <p style={{ fontSize: 13, color: 'var(--text-dim)', marginBottom: 14 }}>
+            La vue actuelle du plan est exportée telle quelle (cadrez et choisissez les calques avant d'exporter).
+          </p>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <button className="btn block" onClick={exportPrint} type="button">
+              Dossier à imprimer / PDF
+            </button>
+            <button className="btn secondary block" onClick={exportPng} type="button">
+              Télécharger l'image (PNG)
+            </button>
+          </div>
+        </Modal>
       )}
 
       {showLayerSheet && (

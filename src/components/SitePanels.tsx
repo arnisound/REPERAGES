@@ -9,9 +9,35 @@ import {
   updateSiteLine,
   updateSiteObject,
 } from '../db/actions'
-import { DISCIPLINE_COLORS, DISCIPLINE_LABELS, type SiteLine, type SiteObject } from '../types'
+import {
+  DISCIPLINE_COLORS,
+  DISCIPLINE_LABELS,
+  INSTALL_STATUS_LABELS,
+  type InstallStatus,
+  type SiteLine,
+  type SiteObject,
+} from '../types'
 import { findLineDef, findObjectDef, objectView } from '../utils/catalog'
 import { formatMeters, lineLengthMeters } from '../utils/geo'
+
+function StatusButtons({ value, onChange }: { value: InstallStatus; onChange: (s: InstallStatus) => void }) {
+  return (
+    <div className="map-panel-row">
+      <label style={{ fontSize: 13, color: 'var(--text-dim)' }}>Montage</label>
+      {(Object.keys(INSTALL_STATUS_LABELS) as InstallStatus[]).map((s) => (
+        <button
+          key={s}
+          className={value === s ? 'btn' : 'btn secondary'}
+          style={{ minHeight: 36, padding: '6px 12px', fontSize: 13 }}
+          onClick={() => onChange(s)}
+          type="button"
+        >
+          {INSTALL_STATUS_LABELS[s]}
+        </button>
+      ))}
+    </div>
+  )
+}
 
 function SpecSelect({
   value,
@@ -107,6 +133,22 @@ export function SiteObjectPanel({
           onChange={(spec) => updateSiteObject(object.id, { spec })}
         />
       )}
+      <div className="map-panel-row">
+        <label style={{ fontSize: 13, color: 'var(--text-dim)' }}>Puissance (kW)</label>
+        <input
+          type="number"
+          step={0.1}
+          min={0}
+          defaultValue={object.powerKw ?? ''}
+          placeholder="—"
+          onBlur={(e) => updateSiteObject(object.id, { powerKw: parseFloat(e.target.value) || undefined })}
+          style={{ width: 90 }}
+        />
+      </div>
+      <StatusButtons
+        value={object.status ?? 'todo'}
+        onChange={(status) => updateSiteObject(object.id, { status })}
+      />
       {!view.isPoint && (
         <>
           <div className="map-panel-row">
@@ -192,6 +234,7 @@ export function SiteLinePanel({ line, onClose }: { line: SiteLine; onClose: () =
       {(def?.specs || line.spec) && (
         <SpecSelect value={line.spec} specs={def?.specs ?? []} onChange={(spec) => updateSiteLine(line.id, { spec })} />
       )}
+      <StatusButtons value={line.status ?? 'todo'} onChange={(status) => updateSiteLine(line.id, { status })} />
       <div className="map-panel-row" style={{ fontSize: 14 }}>
         Longueur : <strong>{formatMeters(length)}</strong>
         {def?.unitLengthM && (
