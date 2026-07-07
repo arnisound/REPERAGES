@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
-import { Cable, Check, Layers, Package, Pentagon, Undo2, X } from 'lucide-react'
+import { Cable, Check, Globe, Grid3x3, Layers, Map as MapIcon, Package, Pentagon, Undo2, X } from 'lucide-react'
 import { db } from '../../db/db'
 import { addSiteLine, addSiteObject, updateSiteObject } from '../../db/actions'
 import {
@@ -17,7 +17,7 @@ import Modal from '../../components/Modal'
 import TopBar from '../../components/TopBar'
 import { LinePickerModal, ObjectPickerModal } from '../../components/CatalogPickers'
 import { SiteLinePanel, SiteObjectPanel } from '../../components/SitePanels'
-import SitePlanCanvas, { type SitePlanMode, type SiteSelection } from './SitePlanCanvas'
+import SitePlanCanvas, { gridStep, type SitePlanBase, type SitePlanMode, type SiteSelection } from './SitePlanCanvas'
 
 export default function SitePlanPage() {
   const { projectId } = useParams<{ projectId: string }>()
@@ -40,6 +40,8 @@ export default function SitePlanPage() {
   const [showLayerSheet, setShowLayerSheet] = useState(false)
   const [visibleLayers, setVisibleLayers] = useState<Set<Discipline>>(new Set(DISCIPLINES))
   const [showPoints, setShowPoints] = useState(true)
+  const [baseLayer, setBaseLayer] = useState<SitePlanBase>('osm')
+  const [viewScale, setViewScale] = useState(10)
 
   if (!projectId || project === undefined) return null
 
@@ -125,16 +127,31 @@ export default function SitePlanPage() {
             visibleLayers={visibleLayers}
             showPoints={showPoints}
             mode={mode}
+            baseLayer={baseLayer}
             selection={selection}
             lineDraft={lineDraft}
             onTap={handleTap}
             onSelect={setSelection}
             onObjectMove={(id, gps) => updateSiteObject(id, { center: gps })}
             onDraftPointMove={(i, gps) => setLineDraft((d) => d.map((p, j) => (j === i ? gps : p)))}
+            onViewScaleChange={setViewScale}
           />
 
           <div className="map-chip">
-            Zone : {formatArea(polygonAreaM2(zone))} · Nord ↑
+            Zone : {formatArea(polygonAreaM2(zone))} · Grille {gridStep(viewScale)} m · Nord ↑
+          </div>
+
+          {/* Background toggle: plan → satellite → aucun */}
+          <div className="map-fab-col">
+            <button
+              className={`icon-btn ${baseLayer !== 'none' ? 'active' : ''}`}
+              onClick={() => setBaseLayer((b) => (b === 'osm' ? 'sat' : b === 'sat' ? 'none' : 'osm'))}
+              type="button"
+              aria-label="Fond de carte"
+              title={baseLayer === 'osm' ? 'Fond : plan' : baseLayer === 'sat' ? 'Fond : satellite' : 'Fond : aucun'}
+            >
+              {baseLayer === 'osm' ? <MapIcon size={20} /> : baseLayer === 'sat' ? <Globe size={20} /> : <Grid3x3 size={20} />}
+            </button>
           </div>
 
           {mode === 'view' && !selection && (

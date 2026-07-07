@@ -36,7 +36,7 @@ export default defineConfig({
         maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,
         runtimeCaching: [
           {
-            urlPattern: /^https:\/\/[a-z]\.tile\.openstreetmap\.org\/.*/,
+            urlPattern: /^https:\/\/([a-z]\.)?tile\.openstreetmap\.org\/.*/,
             handler: 'CacheFirst',
             options: {
               cacheName: 'osm-tiles',

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Circle, Group, Layer, Line, Rect, Stage, Text } from 'react-konva'
+import { Circle, Group, Image as KonvaImage, Layer, Line, Rect, Stage, Text } from 'react-konva'
 import type Konva from 'konva'
 import type { Discipline, GeoPoint, LatLng, SiteLine, SiteObject } from '../../types'
 import { DISCIPLINE_COLORS, POINT_CATEGORY_COLORS } from '../../types'
@@ -7,6 +7,8 @@ import { findLineDef, findObjectDef } from '../../utils/catalog'
 import { formatMeters, fromLocalMeters, lineLengthMeters, polygonCenter, toLocalMeters } from '../../utils/geo'
 
 export type SitePlanMode = 'view' | 'place' | 'line'
+
+export type SitePlanBase = 'none' | 'osm' | 'sat'
 
 export type SiteSelection = { kind: 'object'; id: string } | { kind: 'line'; id: string } | null
 
@@ -18,19 +20,34 @@ interface Props {
   visibleLayers: Set<Discipline>
   showPoints: boolean
   mode: SitePlanMode
+  baseLayer: SitePlanBase
   selection: SiteSelection
   lineDraft: LatLng[]
   onTap: (gps: LatLng) => void
   onSelect: (sel: SiteSelection) => void
   onObjectMove: (id: string, gps: LatLng) => void
   onDraftPointMove: (index: number, gps: LatLng) => void
+  onViewScaleChange?: (pxPerMeter: number) => void
 }
 
 /** Pick a grid step so cells stay readable at the current zoom. */
-function gridStep(viewScale: number): number {
+export function gridStep(viewScale: number): number {
   const steps = [0.5, 1, 2, 5, 10, 20, 50, 100, 200]
   for (const s of steps) if (s * viewScale >= 42) return s
   return 500
+}
+
+// Web Mercator tile math (slippy map tiles)
+function lngToTileX(lng: number, z: number) {
+  return ((lng + 180) / 360) * 2 ** z
+}
+function latToTileY(lat: number, z: number) {
+  const r = (lat * Math.PI) / 180
+  return ((1 - Math.log(Math.tan(r) + 1 / Math.cos(r)) / Math.PI) / 2) * 2 ** z
+}
+function tileNW(x: number, y: number, z: number): LatLng {
+  const n = Math.PI - (2 * Math.PI * y) / 2 ** z
+  return { lat: (180 / Math.PI) * Math.atan(Math.sinh(n)), lng: (x / 2 ** z) * 360 - 180 }
 }
 
 export default function SitePlanCanvas({
@@ -41,12 +58,14 @@ export default function SitePlanCanvas({
   visibleLayers,
   showPoints,
   mode,
+  baseLayer,
   selection,
   lineDraft,
   onTap,
   onSelect,
   onObjectMove,
   onDraftPointMove,
+  onViewScaleChange,
 }: Props) {
   const stageRef = useRef<Konva.Stage>(null)
   const containerRef = useRef<HTMLDivElement>(null)
@@ -100,8 +119,9 @@ export default function SitePlanCanvas({
     })
     stage.batchDraw()
     setViewScale(scale)
+    onViewScaleChange?.(scale)
     fitted.current = true
-  }, [size, bbox])
+  }, [size, bbox]) // eslint-disable-line react-hooks/exhaustive-deps
 
   function applyZoom(newScale: number, pointer: { x: number; y: number }) {
     const stage = stageRef.current
@@ -116,6 +136,7 @@ export default function SitePlanCanvas({
     stage.position({ x: pointer.x - mousePointTo.x * clamped, y: pointer.y - mousePointTo.y * clamped })
     stage.batchDraw()
     setViewScale(clamped)
+    onViewScaleChange?.(clamped)
   }
 
   function handleWheel(e: Konva.KonvaEventObject<WheelEvent>) {
@@ -161,6 +182,59 @@ export default function SitePlanCanvas({
     else onTap(toGps(pos))
   }
 
+  // Map tile background (semi-transparent, to situate the plan on the terrain)
+  const tileImages = useRef(new Map<string, HTMLImageElement>())
+  const [, setTileTick] = useState(0)
+  function getTileImage(url: string): HTMLImageElement | null {
+    const cache = tileImages.current
+    let img = cache.get(url)
+    if (!img) {
+      img = new window.Image()
+      img.crossOrigin = 'anonymous'
+      img.src = url
+      img.onload = () => setTileTick((t) => t + 1)
+      cache.set(url, img)
+    }
+    return img.complete && img.naturalWidth > 0 ? img : null
+  }
+
+  const tiles = useMemo(() => {
+    if (baseLayer === 'none') return []
+    // Zoom level that stays sharp at the current px-per-meter, clamped to what
+    // tile servers provide.
+    let z = Math.round(Math.log2(156543.03392 * Math.cos((ref.lat * Math.PI) / 180) * viewScale))
+    z = Math.max(13, Math.min(19, z))
+    const extent = Math.max(bbox.maxX - bbox.minX, bbox.maxY - bbox.minY)
+    const padM = extent * 0.6 + 60 // « un peu plus » que la zone, pour situer le plan
+    const nw = toGps({ x: bbox.minX - padM, y: bbox.minY - padM })
+    const se = toGps({ x: bbox.maxX + padM, y: bbox.maxY + padM })
+    let x0 = 0
+    let x1 = 0
+    let y0 = 0
+    let y1 = 0
+    for (;;) {
+      x0 = Math.floor(lngToTileX(nw.lng, z))
+      x1 = Math.floor(lngToTileX(se.lng, z))
+      y0 = Math.floor(latToTileY(nw.lat, z))
+      y1 = Math.floor(latToTileY(se.lat, z))
+      if ((x1 - x0 + 1) * (y1 - y0 + 1) <= 120 || z <= 13) break
+      z--
+    }
+    const list: { url: string; x: number; y: number; width: number; height: number }[] = []
+    for (let x = x0; x <= x1; x++) {
+      for (let y = y0; y <= y1; y++) {
+        const a = toCanvas(tileNW(x, y, z))
+        const b = toCanvas(tileNW(x + 1, y + 1, z))
+        const url =
+          baseLayer === 'osm'
+            ? `https://tile.openstreetmap.org/${z}/${x}/${y}.png`
+            : `https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/${z}/${y}/${x}`
+        list.push({ url, x: a.x, y: a.y, width: b.x - a.x, height: b.y - a.y })
+      }
+    }
+    return list
+  }, [baseLayer, viewScale, bbox, ref]) // eslint-disable-line react-hooks/exhaustive-deps
+
   // Screen-constant sizes expressed in canvas (meter) units
   const px = (n: number) => n / viewScale
   const step = gridStep(viewScale)
@@ -192,9 +266,21 @@ export default function SitePlanCanvas({
         onTap={handleStageClick}
       >
         <Layer listening={false}>
+          {/* Map tiles (transparent background) */}
+          {tiles.map((t) => {
+            const img = getTileImage(t.url)
+            return img ? (
+              <KonvaImage key={t.url} image={img} x={t.x} y={t.y} width={t.width} height={t.height} opacity={0.6} />
+            ) : null
+          })}
           {/* Grid */}
           {gridLines.map((l) => (
-            <Line key={l.key} points={l.points} stroke="#1c2941" strokeWidth={px(1)} />
+            <Line
+              key={l.key}
+              points={l.points}
+              stroke={baseLayer === 'none' ? '#1c2941' : 'rgba(148, 163, 184, 0.45)'}
+              strokeWidth={px(1)}
+            />
           ))}
           {/* Zone outline */}
           <Line
