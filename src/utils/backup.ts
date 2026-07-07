@@ -2,10 +2,10 @@ import JSZip from 'jszip'
 import { saveAs } from 'file-saver'
 import { v4 as uuid } from 'uuid'
 import { db } from '../db/db'
-import type { GeoPoint, Photo, Plan, PlanConnection, PlanObject, Project, SiteLine, SiteObject } from '../types'
+import type { CustomModel, GeoPoint, Photo, Plan, PlanConnection, PlanObject, Project, SiteLine, SiteObject } from '../types'
 
 interface BackupManifest {
-  version: 1 | 2
+  version: 1 | 2 | 3
   project: Project
   points: GeoPoint[]
   plans: Plan[]
@@ -14,6 +14,8 @@ interface BackupManifest {
   /** Absent from v1 backups. */
   siteObjects?: SiteObject[]
   siteLines?: SiteLine[]
+  /** Banque de modèles personnalisés (v3+), fusionnée à l'import. */
+  customModels?: CustomModel[]
   photoIds: string[]
 }
 
@@ -36,6 +38,7 @@ export async function exportProject(projectId: string) {
   ).flat()
   const siteObjects = await db.siteObjects.where('projectId').equals(projectId).toArray()
   const siteLines = await db.siteLines.where('projectId').equals(projectId).toArray()
+  const customModels = await db.customModels.toArray()
 
   const photoIds = new Set<string>()
   points.forEach((p) => p.photoIds.forEach((id) => photoIds.add(id)))
@@ -53,7 +56,7 @@ export async function exportProject(projectId: string) {
   }
 
   const manifest: BackupManifest = {
-    version: 2,
+    version: 3,
     project,
     points,
     plans,
@@ -61,6 +64,7 @@ export async function exportProject(projectId: string) {
     planConnections,
     siteObjects,
     siteLines,
+    customModels,
     photoIds: [...photoIds],
   }
   zip.file('manifest.json', JSON.stringify({ ...manifest, photoFiles: photoMeta }, null, 2))
@@ -165,6 +169,13 @@ export async function importProjectFromZip(file: File): Promise<string> {
       id: remap(line.id),
       projectId: newProjectId,
     })
+  }
+
+  // Merge the symbol bank without touching existing models — placed objects
+  // reference models by id (symbolType `custom:{id}`), so ids are preserved.
+  for (const model of manifest.customModels ?? []) {
+    const existing = await db.customModels.get(model.id)
+    if (!existing) await db.customModels.add(model)
   }
 
   return newProjectId

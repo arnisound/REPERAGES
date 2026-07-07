@@ -9,7 +9,7 @@ import {
   DISCIPLINE_LABELS,
   type Discipline,
 } from '../types'
-import { findLineDef, findObjectDef } from '../utils/catalog'
+import { findLineDef, findObjectDef, objectView } from '../utils/catalog'
 import { formatMeters, lineLengthMeters } from '../utils/geo'
 import { pxPerMeter, polylineLengthMeters } from '../utils/scale'
 import { SECTION_SIZES, aggregateCuts } from '../utils/cutlist'
@@ -96,8 +96,8 @@ export default function MaterialPage() {
     }
 
     for (const o of siteObjects) {
-      const def = findObjectDef(o.layer, o.symbolType)
-      objGroup(o.layer, def?.label ?? o.symbolType).count++
+      const view = objectView(o)
+      objGroup(o.layer, `${view.label}${o.spec ? ` ${o.spec}` : ''}`).count++
     }
     for (const o of planObjects) {
       const def = findObjectDef(o.layer, o.symbolType)
@@ -106,7 +106,7 @@ export default function MaterialPage() {
 
     for (const l of siteLines) {
       const def = findLineDef(l.layer, l.lineType)
-      const g = lnGroup(l.layer, def?.label ?? l.lineType, {
+      const g = lnGroup(l.layer, `${def?.label ?? l.lineType}${l.spec ? ` ${l.spec}` : ''}`, {
         unitLengthM: def?.unitLengthM,
         sectionable: def?.sectionable ?? false,
       })

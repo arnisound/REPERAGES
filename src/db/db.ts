@@ -1,5 +1,6 @@
 import Dexie, { type EntityTable } from 'dexie'
 import type {
+  CustomModel,
   GeoPoint,
   Photo,
   Plan,
@@ -25,6 +26,7 @@ export class ReperagesDB extends Dexie {
   planConnections!: EntityTable<PlanConnection, 'id'>
   siteObjects!: EntityTable<SiteObject, 'id'>
   siteLines!: EntityTable<SiteLine, 'id'>
+  customModels!: EntityTable<CustomModel, 'id'>
 
   constructor() {
     super('reperages-db')
@@ -61,6 +63,17 @@ export class ReperagesDB extends Dexie {
             if (LAYER_MIGRATION[conn.layer]) conn.layer = LAYER_MIGRATION[conn.layer]
           })
       })
+    this.version(3).stores({
+      projects: 'id, name, updatedAt',
+      points: 'id, projectId, category, updatedAt',
+      photos: 'id, createdAt',
+      plans: 'id, projectId, updatedAt',
+      planObjects: 'id, planId, layer',
+      planConnections: 'id, planId, layer',
+      siteObjects: 'id, projectId, layer',
+      siteLines: 'id, projectId, layer',
+      customModels: 'id, layer, name',
+    })
   }
 }
 

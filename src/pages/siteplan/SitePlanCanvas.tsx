@@ -3,7 +3,7 @@ import { Circle, Group, Image as KonvaImage, Layer, Line, Rect, Stage, Text } fr
 import type Konva from 'konva'
 import type { Discipline, GeoPoint, LatLng, SiteLine, SiteObject } from '../../types'
 import { DISCIPLINE_COLORS, POINT_CATEGORY_COLORS } from '../../types'
-import { findLineDef, findObjectDef } from '../../utils/catalog'
+import { findLineDef, objectView } from '../../utils/catalog'
 import { formatMeters, fromLocalMeters, lineLengthMeters, polygonCenter, toLocalMeters } from '../../utils/geo'
 
 export type SitePlanMode = 'view' | 'place' | 'line' | 'multi'
@@ -381,12 +381,12 @@ export default function SitePlanCanvas({
           {objects
             .filter((o) => visibleLayers.has(o.layer))
             .map((o) => {
-              const def = findObjectDef(o.layer, o.symbolType)
-              const color = DISCIPLINE_COLORS[o.layer]
+              const view = objectView(o)
+              const color = view.color
               const inMulti = mode === 'multi' && multiIds.has(o.id)
               const selected = (selection?.kind === 'object' && selection.id === o.id) || inMulti
               const c = toCanvas(o.center)
-              const isPoint = def?.point ?? false
+              const isPoint = view.isPoint
               const w = isPoint ? px(24) : o.widthM
               const h = isPoint ? px(24) : o.heightM
               const handleObjectTap = (e: Konva.KonvaEventObject<Event>) => {
@@ -437,7 +437,7 @@ export default function SitePlanCanvas({
                     />
                   )}
                   <Text
-                    text={def?.glyph ?? '?'}
+                    text={view.glyph}
                     fontSize={isPoint ? px(10) : Math.max(Math.min(w, h) * 0.4, px(9))}
                     fontStyle="bold"
                     fill={isPoint ? '#0b1220' : '#e8edf6'}

@@ -3,6 +3,7 @@ import { db } from './db'
 import { offsetLatLng } from '../utils/geo'
 import type {
   Calibration,
+  CustomModel,
   Discipline,
   GeoPoint,
   LatLng,
@@ -70,6 +71,11 @@ export async function addSiteObject(data: {
   widthM: number
   heightM: number
   label?: string
+  color?: string
+  glyph?: string
+  typeLabel?: string
+  isPoint?: boolean
+  spec?: string
 }): Promise<SiteObject> {
   const obj: SiteObject = { id: uuid(), rotation: 0, createdAt: Date.now(), ...data }
   await db.siteObjects.add(obj)
@@ -106,6 +112,7 @@ export async function addSiteLine(data: {
   lineType: string
   points: LatLng[]
   label?: string
+  spec?: string
 }): Promise<SiteLine> {
   const line: SiteLine = { id: uuid(), createdAt: Date.now(), ...data }
   await db.siteLines.add(line)
@@ -118,6 +125,26 @@ export async function updateSiteLine(id: string, patch: Partial<SiteLine>) {
 
 export async function deleteSiteLine(id: string) {
   await db.siteLines.delete(id)
+}
+
+// ---- Custom models (banque de symboles, globale à l'application) ----
+
+export async function addCustomModel(data: {
+  layer: Discipline
+  name: string
+  glyph: string
+  color?: string
+  w: number
+  h: number
+  point: boolean
+}): Promise<CustomModel> {
+  const model: CustomModel = { id: uuid(), createdAt: Date.now(), ...data }
+  await db.customModels.add(model)
+  return model
+}
+
+export async function deleteCustomModel(id: string) {
+  await db.customModels.delete(id)
 }
 
 /** Clone a line next to the original (2 m south-east). */

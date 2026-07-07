@@ -20,7 +20,7 @@ import {
   type SiteLine,
   type SiteObject,
 } from '../../types'
-import { findLineDef, findObjectDef } from '../../utils/catalog'
+import { findLineDef, objectView } from '../../utils/catalog'
 import { formatArea, polygonAreaM2, rectangleCorners } from '../../utils/geo'
 import Modal from '../../components/Modal'
 import TopBar from '../../components/TopBar'
@@ -337,15 +337,15 @@ export default function MapPage() {
           {siteObjects
             .filter((o) => visibleLayers.has(o.layer))
             .map((o) => {
-              const def = findObjectDef(o.layer, o.symbolType)
-              const color = DISCIPLINE_COLORS[o.layer]
+              const view = objectView(o)
+              const color = view.color
               const selected = selection?.kind === 'object' && selection.id === o.id
-              if (def?.point) {
+              if (view.isPoint) {
                 return (
                   <Marker
                     key={o.id}
                     position={[o.center.lat, o.center.lng]}
-                    icon={pointObjectIcon(color, def.glyph, selected)}
+                    icon={pointObjectIcon(color, view.glyph, selected)}
                     eventHandlers={{
                       click: (e) => selectShape({ kind: 'object', id: o.id }, e as L.LeafletMouseEvent),
                     }}
@@ -372,7 +372,7 @@ export default function MapPage() {
                   eventHandlers={{ click: (e) => selectShape({ kind: 'object', id: o.id }, e) }}
                 >
                   <Tooltip permanent direction="center" className="site-obj-label">
-                    {o.label || def?.glyph || '?'}
+                    {o.label || view.glyph}
                   </Tooltip>
                 </Polygon>
               )

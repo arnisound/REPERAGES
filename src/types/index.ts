@@ -1,11 +1,30 @@
-export type Discipline = 'implantation' | 'electricite' | 'eau' | 'audio' | 'lumiere' | 'securite'
+export type Discipline =
+  | 'implantation'
+  | 'electricite'
+  | 'eau'
+  | 'reseau'
+  | 'video'
+  | 'audio'
+  | 'lumiere'
+  | 'securite'
 
-export const DISCIPLINES: Discipline[] = ['implantation', 'electricite', 'eau', 'audio', 'lumiere', 'securite']
+export const DISCIPLINES: Discipline[] = [
+  'implantation',
+  'electricite',
+  'eau',
+  'reseau',
+  'video',
+  'audio',
+  'lumiere',
+  'securite',
+]
 
 export const DISCIPLINE_LABELS: Record<Discipline, string> = {
   implantation: 'Implantation',
   electricite: 'Électricité',
   eau: 'Eau / Plomberie',
+  reseau: 'Réseau',
+  video: 'Vidéo',
   audio: 'Audio',
   lumiere: 'Lumière',
   securite: 'Sécurité',
@@ -15,6 +34,8 @@ export const DISCIPLINE_COLORS: Record<Discipline, string> = {
   implantation: '#e2e8f0',
   electricite: '#f59e0b',
   eau: '#38bdf8',
+  reseau: '#818cf8',
+  video: '#d946ef',
   audio: '#34d399',
   lumiere: '#fb7185',
   securite: '#ef4444',
@@ -109,6 +130,14 @@ export interface SiteObject {
   heightM: number
   label?: string
   notes?: string
+  /** Overrides du catalogue, personnalisables par objet. */
+  color?: string
+  glyph?: string
+  /** Snapshot du nom de type pour les modèles personnalisés (indépendant du catalogue). */
+  typeLabel?: string
+  isPoint?: boolean
+  /** Spécification technique (ex : TRI 32A, Cat 6). */
+  spec?: string
   createdAt: number
 }
 
@@ -121,6 +150,21 @@ export interface SiteLine {
   points: LatLng[]
   label?: string
   notes?: string
+  /** Spécification technique (ex : TRI 63A, Cat 6a). */
+  spec?: string
+  createdAt: number
+}
+
+/** Modèle d'objet personnalisé, global à l'application (banque de symboles). */
+export interface CustomModel {
+  id: string
+  layer: Discipline
+  name: string
+  glyph: string
+  color?: string
+  w: number
+  h: number
+  point: boolean
   createdAt: number
 }
 

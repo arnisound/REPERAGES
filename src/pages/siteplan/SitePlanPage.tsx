@@ -34,7 +34,7 @@ import {
   type Discipline,
   type LatLng,
 } from '../../types'
-import type { LineDef, ObjectDef } from '../../utils/catalog'
+import type { LineDef, PlacePayload } from '../../utils/catalog'
 import { formatArea, formatMeters, lineLengthMeters, offsetLatLng, polygonAreaM2 } from '../../utils/geo'
 import Modal from '../../components/Modal'
 import TopBar from '../../components/TopBar'
@@ -56,8 +56,8 @@ export default function SitePlanPage() {
   const [mode, setMode] = useState<SitePlanMode>('view')
   const [selection, setSelection] = useState<SiteSelection>(null)
   const [multiIds, setMultiIds] = useState<Set<string>>(new Set())
-  const [placeTarget, setPlaceTarget] = useState<{ layer: Discipline; def: ObjectDef } | null>(null)
-  const [lineTarget, setLineTarget] = useState<{ layer: Discipline; def: LineDef } | null>(null)
+  const [placeTarget, setPlaceTarget] = useState<PlacePayload | null>(null)
+  const [lineTarget, setLineTarget] = useState<{ layer: Discipline; def: LineDef; spec?: string } | null>(null)
   const [lineDraft, setLineDraft] = useState<LatLng[]>([])
   const [showObjectPicker, setShowObjectPicker] = useState(false)
   const [showLinePicker, setShowLinePicker] = useState(false)
@@ -158,13 +158,20 @@ export default function SitePlanPage() {
   async function handleTap(gps: LatLng) {
     if (!projectId) return
     if (mode === 'place' && placeTarget) {
+      const p = placeTarget
       await addSiteObject({
         projectId,
-        layer: placeTarget.layer,
-        symbolType: placeTarget.def.type,
+        layer: p.layer,
+        symbolType: p.symbolType,
         center: gps,
-        widthM: placeTarget.def.w,
-        heightM: placeTarget.def.h,
+        widthM: p.w,
+        heightM: p.h,
+        spec: p.spec,
+        // Les modèles perso figent leur apparence sur l'objet (indépendants du catalogue).
+        color: p.custom ? p.color : undefined,
+        glyph: p.custom ? p.glyph : undefined,
+        typeLabel: p.custom ? p.typeLabel : undefined,
+        isPoint: p.custom ? p.point : undefined,
       })
       return
     }
@@ -175,7 +182,13 @@ export default function SitePlanPage() {
 
   async function finishLine() {
     if (!projectId || !lineTarget || lineDraft.length < 2) return
-    await addSiteLine({ projectId, layer: lineTarget.layer, lineType: lineTarget.def.type, points: lineDraft })
+    await addSiteLine({
+      projectId,
+      layer: lineTarget.layer,
+      lineType: lineTarget.def.type,
+      points: lineDraft,
+      spec: lineTarget.spec,
+    })
     resetTools()
   }
 
@@ -292,7 +305,10 @@ export default function SitePlanPage() {
           {mode === 'place' && placeTarget && (
             <div className="map-panel">
               <div className="map-panel-row">
-                <span className="map-panel-title">Touchez le plan pour placer : {placeTarget.def.label}</span>
+                <span className="map-panel-title">
+                  Touchez le plan pour placer : {placeTarget.typeLabel}
+                  {placeTarget.spec ? ` ${placeTarget.spec}` : ''}
+                </span>
                 <button className="btn" onClick={resetTools} type="button">
                   <Check size={18} /> Terminer
                 </button>
@@ -305,6 +321,7 @@ export default function SitePlanPage() {
               <div className="map-panel-row">
                 <span className="map-panel-title">
                   {lineTarget.def.label}
+                  {lineTarget.spec ? ` ${lineTarget.spec}` : ''}
                   {draftLength !== null && ` · ${formatMeters(draftLength)}`}
                   {draftLength !== null &&
                     lineTarget.def.unitLengthM &&
@@ -343,8 +360,8 @@ export default function SitePlanPage() {
 
       {showObjectPicker && (
         <ObjectPickerModal
-          onPick={(layer, def) => {
-            setPlaceTarget({ layer, def })
+          onPick={(payload) => {
+            setPlaceTarget(payload)
             setShowObjectPicker(false)
             setMode('place')
             setSelection(null)
@@ -354,8 +371,8 @@ export default function SitePlanPage() {
       )}
       {showLinePicker && (
         <LinePickerModal
-          onPick={(layer, def) => {
-            setLineTarget({ layer, def })
+          onPick={(layer, def, spec) => {
+            setLineTarget({ layer, def, spec })
             setLineDraft([])
             setShowLinePicker(false)
             setMode('line')

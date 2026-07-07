@@ -1,4 +1,4 @@
-import type { Discipline } from '../types'
+import { DISCIPLINE_COLORS, type Discipline, type SiteObject } from '../types'
 
 export interface ObjectDef {
   type: string
@@ -13,6 +13,8 @@ export interface ObjectDef {
    */
   point?: boolean
   glyph: string
+  /** Spécifications proposées au placement (ex : calibres électriques). */
+  specs?: string[]
 }
 
 export interface LineDef {
@@ -23,7 +25,22 @@ export interface LineDef {
   unitLengthM?: number
   /** Câble/tuyau vendu par tronçons : éligible à la découpe du récap matériel. */
   sectionable?: boolean
+  /** Spécifications proposées au tracé (ex : calibres électriques). */
+  specs?: string[]
 }
+
+export const ELEC_SPECS = [
+  'MONO 16A',
+  'MONO 32A',
+  'TRI 16A',
+  'TRI 32A',
+  'TRI 63A',
+  'TRI 125A',
+  'POWERLOCK 250A',
+  'POWERLOCK 400A',
+]
+
+export const RJ45_SPECS = ['Cat 5e', 'Cat 6', 'Cat 6a', 'Cat 7']
 
 export const OBJECT_CATALOG: Record<Discipline, ObjectDef[]> = {
   implantation: [
@@ -49,14 +66,35 @@ export const OBJECT_CATALOG: Record<Discipline, ObjectDef[]> = {
     { type: 'objet_custom', label: 'Objet personnalisé', w: 1, h: 1, glyph: '?' },
   ],
   electricite: [
-    { type: 'armoire_electrique', label: 'Armoire électrique', w: 0.8, h: 0.6, glyph: 'AE' },
-    { type: 'coffret', label: 'Coffret de distribution', w: 0.4, h: 0.3, glyph: 'C', point: true },
+    { type: 'armoire_electrique', label: 'Armoire électrique', w: 0.8, h: 0.6, glyph: 'AE', specs: ELEC_SPECS },
+    { type: 'coffret', label: 'Coffret de distribution', w: 0.4, h: 0.3, glyph: 'C', point: true, specs: ELEC_SPECS },
     { type: 'groupe_electrogene', label: 'Groupe électrogène 2×1 m', w: 2, h: 1, glyph: 'GE' },
-    { type: 'prise_mono', label: 'Point de raccordement 16A', w: 0.2, h: 0.2, glyph: '~', point: true },
+    { type: 'prise_mono', label: 'Point de raccordement', w: 0.2, h: 0.2, glyph: '~', point: true, specs: ELEC_SPECS },
     { type: 'prise_tri', label: 'Raccordement triphasé 32/63A', w: 0.2, h: 0.2, glyph: '3~', point: true },
     { type: 'enrouleur', label: 'Enrouleur / multiprise', w: 0.3, h: 0.3, glyph: 'EN', point: true },
     { type: 'projecteur_chantier', label: 'Projecteur de zone / chantier', w: 0.4, h: 0.4, glyph: 'PZ', point: true },
     { type: 'eclairage_secours', label: 'Mât / éclairage de zone', w: 0.5, h: 0.5, glyph: 'M', point: true },
+  ],
+  reseau: [
+    { type: 'baie_brassage', label: 'Baie de brassage', w: 0.6, h: 0.8, glyph: 'BB' },
+    { type: 'switch', label: 'Switch réseau', w: 0.4, h: 0.3, glyph: 'SW', point: true },
+    { type: 'routeur', label: 'Routeur / box 4G-5G', w: 0.3, h: 0.3, glyph: 'RT', point: true },
+    { type: 'borne_wifi', label: 'Borne Wi-Fi', w: 0.2, h: 0.2, glyph: 'WIFI', point: true },
+    { type: 'prise_rj45', label: 'Prise RJ45', w: 0.1, h: 0.1, glyph: 'RJ', point: true },
+    { type: 'point_fibre', label: 'Arrivée fibre', w: 0.2, h: 0.2, glyph: 'FO', point: true },
+    { type: 'convertisseur_fibre', label: 'Convertisseur fibre / média', w: 0.2, h: 0.2, glyph: 'CV', point: true },
+    { type: 'serveur', label: 'Serveur / NAS', w: 0.6, h: 0.8, glyph: 'SRV' },
+  ],
+  video: [
+    { type: 'ecran_led', label: 'Écran LED 4×3 m', w: 4, h: 0.5, glyph: 'LED' },
+    { type: 'ecran_projection', label: 'Écran de projection 3×2 m', w: 3, h: 0.3, glyph: 'EP' },
+    { type: 'videoprojecteur', label: 'Vidéoprojecteur', w: 0.5, h: 0.4, glyph: 'VP', point: true },
+    { type: 'ecran_moniteur', label: 'Écran / moniteur', w: 1.2, h: 0.1, glyph: 'TV' },
+    { type: 'camera', label: 'Caméra', w: 0.3, h: 0.3, glyph: 'CAM', point: true },
+    { type: 'camera_plateau', label: 'Caméra plateau + pied', w: 0.8, h: 0.8, glyph: 'CAM' },
+    { type: 'regie_video', label: 'Régie vidéo 2×1 m', w: 2, h: 1, glyph: 'RV' },
+    { type: 'melangeur', label: 'Mélangeur / grille', w: 0.5, h: 0.4, glyph: 'MG', point: true },
+    { type: 'enregistreur', label: 'Enregistreur / streaming', w: 0.4, h: 0.4, glyph: 'REC', point: true },
   ],
   eau: [
     { type: 'arrivee_eau', label: "Arrivée d'eau", w: 0.3, h: 0.3, glyph: 'E', point: true },
@@ -107,13 +145,23 @@ export const LINE_CATALOG: Record<Discipline, LineDef[]> = {
     { type: 'limite', label: 'Limite interne', dashed: true },
   ],
   electricite: [
-    { type: 'cable_elec', label: 'Câble électrique', sectionable: true },
+    { type: 'cable_elec', label: 'Câble électrique', sectionable: true, specs: ELEC_SPECS },
     { type: 'cable_tri', label: 'Câble triphasé', sectionable: true },
     { type: 'passage_cable', label: 'Passage de câbles protégé', dashed: true },
   ],
   eau: [
     { type: 'tuyau_eau', label: "Tuyau d'alimentation", sectionable: true },
     { type: 'evacuation_ligne', label: "Ligne d'évacuation", dashed: true, sectionable: true },
+  ],
+  reseau: [
+    { type: 'cable_rj45', label: 'Câble RJ45', sectionable: true, specs: RJ45_SPECS },
+    { type: 'fibre', label: 'Fibre optique', sectionable: true },
+    { type: 'vlan', label: 'Liaison VLAN / logique', dashed: true },
+  ],
+  video: [
+    { type: 'cable_sdi', label: 'Câble SDI', sectionable: true },
+    { type: 'cable_hdmi', label: 'Câble HDMI', sectionable: true },
+    { type: 'fibre_video', label: 'Fibre vidéo', sectionable: true },
   ],
   audio: [
     { type: 'multipaire', label: 'Multipaire / snake', sectionable: true },
@@ -137,4 +185,41 @@ export function findObjectDef(layer: Discipline, type: string): ObjectDef | unde
 
 export function findLineDef(layer: Discipline, type: string): LineDef | undefined {
   return LINE_CATALOG[layer].find((l) => l.type === type)
+}
+
+export interface ObjectView {
+  label: string
+  glyph: string
+  color: string
+  isPoint: boolean
+}
+
+/** Choix complet issu du sélecteur d'objets (catalogue, spec ou modèle perso). */
+export interface PlacePayload {
+  layer: Discipline
+  symbolType: string
+  typeLabel: string
+  glyph: string
+  color?: string
+  w: number
+  h: number
+  point: boolean
+  spec?: string
+  /** true si issu d'un modèle personnalisé : l'apparence est figée sur l'objet. */
+  custom?: boolean
+}
+
+/**
+ * Apparence effective d'un objet placé : personnalisations stockées sur
+ * l'objet (couleur, initiales, nom de type — notamment pour les modèles
+ * personnalisés), puis catalogue, puis valeurs du calque.
+ */
+export function objectView(o: SiteObject): ObjectView {
+  const def = findObjectDef(o.layer, o.symbolType)
+  return {
+    label: o.typeLabel ?? def?.label ?? o.symbolType,
+    glyph: o.glyph ?? def?.glyph ?? '?',
+    color: o.color ?? DISCIPLINE_COLORS[o.layer],
+    isPoint: o.isPoint ?? def?.point ?? false,
+  }
 }
