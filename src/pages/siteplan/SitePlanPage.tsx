@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { saveAs } from 'file-saver'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
@@ -15,6 +15,7 @@ import {
   MousePointerClick,
   Package,
   Pentagon,
+  Redo2,
   Ruler,
   Trash2,
   Undo2,
@@ -35,6 +36,7 @@ import {
 } from '../../db/actions'
 import { getCurrentPosition } from '../../hooks/useGeolocation'
 import { pxPerMeter } from '../../utils/scale'
+import { canRedo, canUndo, redo, subscribeHistory, undo } from '../../utils/history'
 import {
   DISCIPLINES,
   DISCIPLINE_COLORS,
@@ -88,6 +90,27 @@ export default function SitePlanPage() {
   const [photoUrls, setPhotoUrls] = useState<Map<string, string>>(new Map())
   const exportHandle = useRef<SitePlanCanvasHandle | null>(null)
   const [showExport, setShowExport] = useState(false)
+
+  // Historique annuler/rétablir (les hooks Dexie enregistrent, on affiche l'état)
+  const historyTick = useSyncExternalStore(subscribeHistory, () => `${canUndo()}:${canRedo()}`)
+  const undoEnabled = historyTick.startsWith('true')
+  const redoEnabled = historyTick.endsWith('true')
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (!(e.ctrlKey || e.metaKey)) return
+      const target = e.target as HTMLElement
+      if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') return
+      if (e.key === 'z' && !e.shiftKey) {
+        e.preventDefault()
+        undo()
+      } else if (e.key === 'y' || (e.key === 'z' && e.shiftKey)) {
+        e.preventDefault()
+        redo()
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
 
   // Object URLs des images de plans superposés (créées/révoquées avec la visibilité)
   const visibleOverlayPlans = plans.filter((p) => p.overlay?.visible || p.id === overlayEditId)
@@ -403,6 +426,7 @@ export default function SitePlanPage() {
               if (p?.overlay) updatePlan(id, { overlay: { ...p.overlay, center: gps } })
             }}
             onObjectMove={(id, gps) => updateSiteObject(id, { center: gps })}
+            onObjectRotate={(id, rotation) => updateSiteObject(id, { rotation })}
             onGroupMove={handleGroupMove}
             onDraftPointMove={(i, gps) => setLineDraft((d) => d.map((p, j) => (j === i ? gps : p)))}
             onViewScaleChange={setViewScale}
@@ -415,6 +439,26 @@ export default function SitePlanPage() {
 
           {/* Background toggle: plan → satellite → aucun */}
           <div className="map-fab-col">
+            <button
+              className="icon-btn"
+              onClick={() => undo()}
+              disabled={!undoEnabled}
+              style={{ opacity: undoEnabled ? 1 : 0.35 }}
+              type="button"
+              aria-label="Annuler"
+            >
+              <Undo2 size={20} />
+            </button>
+            <button
+              className="icon-btn"
+              onClick={() => redo()}
+              disabled={!redoEnabled}
+              style={{ opacity: redoEnabled ? 1 : 0.35 }}
+              type="button"
+              aria-label="Rétablir"
+            >
+              <Redo2 size={20} />
+            </button>
             <button
               className={`icon-btn ${baseLayer !== 'none' ? 'active' : ''}`}
               onClick={() => setBaseLayer((b) => (b === 'osm' ? 'sat' : b === 'sat' ? 'none' : 'osm'))}

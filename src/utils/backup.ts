@@ -2,6 +2,7 @@ import JSZip from 'jszip'
 import { saveAs } from 'file-saver'
 import { v4 as uuid } from 'uuid'
 import { db } from '../db/db'
+import { withoutHistory } from './history'
 import type { CustomModel, GeoPoint, Photo, Plan, PlanConnection, PlanObject, Project, SiteLine, SiteObject } from '../types'
 
 interface BackupManifest {
@@ -74,7 +75,12 @@ export async function exportProject(projectId: string) {
   saveAs(blob, filename)
 }
 
-export async function importProjectFromZip(file: File): Promise<string> {
+export function importProjectFromZip(file: File): Promise<string> {
+  // Un import n'est pas une édition : il ne doit pas remplir l'historique d'annulation.
+  return withoutHistory(() => importProjectFromZipInner(file))
+}
+
+async function importProjectFromZipInner(file: File): Promise<string> {
   const zip = await JSZip.loadAsync(file)
   const manifestFile = zip.file('manifest.json')
   if (!manifestFile) throw new Error('Fichier de sauvegarde invalide')

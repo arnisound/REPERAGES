@@ -1,4 +1,5 @@
 import Dexie, { type EntityTable } from 'dexie'
+import { installHistory } from '../utils/history'
 import type {
   CustomModel,
   GeoPoint,
@@ -78,3 +79,6 @@ export class ReperagesDB extends Dexie {
 }
 
 export const db = new ReperagesDB()
+
+// L'historique annuler/rétablir observe les mutations du plan (hooks Dexie).
+installHistory(db)

@@ -48,6 +48,7 @@ interface Props {
   onToggleMulti: (id: string) => void
   onOverlayMove: (id: string, gps: LatLng) => void
   onObjectMove: (id: string, gps: LatLng) => void
+  onObjectRotate: (id: string, rotation: number) => void
   /** Déplacement de groupe en mètres (est / nord) après glisser en mode multi. */
   onGroupMove: (eastM: number, northM: number) => void
   onDraftPointMove: (index: number, gps: LatLng) => void
@@ -95,6 +96,7 @@ export default function SitePlanCanvas({
   onToggleMulti,
   onOverlayMove,
   onObjectMove,
+  onObjectRotate,
   onGroupMove,
   onDraftPointMove,
   onViewScaleChange,
@@ -217,6 +219,18 @@ export default function SitePlanCanvas({
   }
 
   const dragStart = useRef<{ x: number; y: number } | null>(null)
+
+  // Rotation au doigt : angle transitoire pendant le glisser de la poignée
+  const [rotDraft, setRotDraft] = useState<{ id: string; deg: number } | null>(null)
+
+  function angleFromPointer(center: { x: number; y: number }): number | null {
+    const pos = stageRef.current?.getRelativePointerPosition()
+    if (!pos) return null
+    let deg = (Math.atan2(pos.x - center.x, -(pos.y - center.y)) * 180) / Math.PI
+    deg = Math.round(deg / 5) * 5
+    for (const card of [-180, -90, 0, 90, 180]) if (Math.abs(deg - card) <= 5) deg = card
+    return deg
+  }
 
   // Export : capture de la vue courante (WYSIWYG) en haute résolution
   useEffect(() => {
@@ -467,7 +481,7 @@ export default function SitePlanCanvas({
                   key={o.id}
                   x={c.x}
                   y={c.y}
-                  rotation={o.rotation}
+                  rotation={rotDraft?.id === o.id ? rotDraft.deg : o.rotation}
                   draggable={mode === 'view' || inMulti}
                   listening={shapesListening}
                   onDragStart={(e) => {
@@ -551,6 +565,71 @@ export default function SitePlanCanvas({
                 </Group>
               )
             })}
+
+          {/* Poignée de rotation de l'objet sélectionné */}
+          {mode === 'view' &&
+            selection?.kind === 'object' &&
+            (() => {
+              const o = objects.find((x) => x.id === selection.id)
+              if (!o) return null
+              if (objectView(o).isPoint) return null
+              const c = toCanvas(o.center)
+              const deg = rotDraft?.id === o.id ? rotDraft.deg : o.rotation
+              const rad = (deg * Math.PI) / 180
+              const d = o.heightM / 2 + px(36)
+              const hx = c.x + d * Math.sin(rad)
+              const hy = c.y - d * Math.cos(rad)
+              return (
+                <Group>
+                  <Line
+                    points={[c.x, c.y, hx, hy]}
+                    stroke="#38bdf8"
+                    strokeWidth={px(1.5)}
+                    dash={[px(4), px(4)]}
+                    listening={false}
+                  />
+                  <Circle
+                    x={hx}
+                    y={hy}
+                    radius={px(14)}
+                    fill="rgba(56,189,248,0.3)"
+                    stroke="#38bdf8"
+                    strokeWidth={px(2)}
+                    draggable
+                    onClick={(e) => {
+                      e.cancelBubble = true
+                    }}
+                    onTap={(e) => {
+                      e.cancelBubble = true
+                    }}
+                    onDragMove={() => {
+                      const a = angleFromPointer(c)
+                      if (a !== null) setRotDraft({ id: o.id, deg: a })
+                    }}
+                    onDragEnd={(e) => {
+                      e.cancelBubble = true
+                      const a = angleFromPointer(c) ?? rotDraft?.deg ?? o.rotation
+                      setRotDraft(null)
+                      onObjectRotate(o.id, a)
+                    }}
+                  />
+                  <Text
+                    text="⟳"
+                    x={hx}
+                    y={hy}
+                    fontSize={px(16)}
+                    fill="#e8edf6"
+                    width={px(28)}
+                    height={px(28)}
+                    offsetX={px(14)}
+                    offsetY={px(13)}
+                    align="center"
+                    verticalAlign="middle"
+                    listening={false}
+                  />
+                </Group>
+              )
+            })()}
 
           {/* GPS reference points projected on the plan */}
           {showPoints &&

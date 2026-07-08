@@ -1,6 +1,7 @@
 import { v4 as uuid } from 'uuid'
 import { db } from './db'
 import { offsetLatLng } from '../utils/geo'
+import { withoutHistory } from '../utils/history'
 import type {
   Calibration,
   CustomModel,
@@ -47,14 +48,16 @@ export async function deleteProject(id: string) {
     await db.planObjects.where('planId').equals(plan.id).delete()
     await db.planConnections.where('planId').equals(plan.id).delete()
   }
-  await db.transaction('rw', [db.projects, db.points, db.plans, db.photos, db.siteObjects, db.siteLines], async () => {
-    await db.points.where('projectId').equals(id).delete()
-    await db.plans.where('projectId').equals(id).delete()
-    await db.siteObjects.where('projectId').equals(id).delete()
-    await db.siteLines.where('projectId').equals(id).delete()
-    if (photoIds.size) await db.photos.bulkDelete([...photoIds])
-    await db.projects.delete(id)
-  })
+  await withoutHistory(() =>
+    db.transaction('rw', [db.projects, db.points, db.plans, db.photos, db.siteObjects, db.siteLines], async () => {
+      await db.points.where('projectId').equals(id).delete()
+      await db.plans.where('projectId').equals(id).delete()
+      await db.siteObjects.where('projectId').equals(id).delete()
+      await db.siteLines.where('projectId').equals(id).delete()
+      if (photoIds.size) await db.photos.bulkDelete([...photoIds])
+      await db.projects.delete(id)
+    }),
+  )
 }
 
 export async function setProjectZone(id: string, zone: LatLng[] | undefined) {
