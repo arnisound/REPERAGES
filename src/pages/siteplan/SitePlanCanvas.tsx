@@ -4,11 +4,12 @@ import type Konva from 'konva'
 import type { Discipline, GeoPoint, LatLng, SiteLine, SiteObject } from '../../types'
 import { DISCIPLINE_COLORS, POINT_CATEGORY_COLORS } from '../../types'
 import { findLineDef, objectView } from '../../utils/catalog'
+import { findBaseLayer, tileUrl } from '../../utils/baseLayers'
 import { formatMeters, fromLocalMeters, lineLengthMeters, polygonCenter, toLocalMeters } from '../../utils/geo'
 
 export type SitePlanMode = 'view' | 'place' | 'line' | 'multi' | 'check'
 
-export type SitePlanBase = 'none' | 'osm' | 'sat'
+export type SitePlanBase = string // 'none' ou id d'un fond de utils/baseLayers
 
 export type SiteSelection = { kind: 'object'; id: string } | { kind: 'line'; id: string } | null
 
@@ -266,10 +267,11 @@ export default function SitePlanCanvas({
 
   const tiles = useMemo(() => {
     if (baseLayer === 'none') return []
+    const def = findBaseLayer(baseLayer)
     // Zoom level that stays sharp at the current px-per-meter, clamped to what
-    // tile servers provide.
+    // the tile server provides.
     let z = Math.round(Math.log2(156543.03392 * Math.cos((ref.lat * Math.PI) / 180) * viewScale))
-    z = Math.max(13, Math.min(19, z))
+    z = Math.max(13, Math.min(def.maxNativeZoom, z))
     const extent = Math.max(bbox.maxX - bbox.minX, bbox.maxY - bbox.minY)
     const padM = extent * 0.6 + 60 // « un peu plus » que la zone, pour situer le plan
     const nw = toGps({ x: bbox.minX - padM, y: bbox.minY - padM })
@@ -291,11 +293,7 @@ export default function SitePlanCanvas({
       for (let y = y0; y <= y1; y++) {
         const a = toCanvas(tileNW(x, y, z))
         const b = toCanvas(tileNW(x + 1, y + 1, z))
-        const url =
-          baseLayer === 'osm'
-            ? `https://tile.openstreetmap.org/${z}/${x}/${y}.png`
-            : `https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/${z}/${y}/${x}`
-        list.push({ url, x: a.x, y: a.y, width: b.x - a.x, height: b.y - a.y })
+        list.push({ url: tileUrl(def, z, x, y), x: a.x, y: a.y, width: b.x - a.x, height: b.y - a.y })
       }
     }
     return list

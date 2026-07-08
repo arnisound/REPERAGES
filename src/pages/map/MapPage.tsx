@@ -22,6 +22,7 @@ import {
 } from '../../types'
 import { findLineDef, objectView } from '../../utils/catalog'
 import { formatArea, polygonAreaM2, rectangleCorners } from '../../utils/geo'
+import { BASE_LAYERS, findBaseLayer } from '../../utils/baseLayers'
 import Modal from '../../components/Modal'
 import TopBar from '../../components/TopBar'
 import { SiteLinePanel, SiteObjectPanel } from '../../components/SitePanels'
@@ -134,7 +135,9 @@ export default function MapPage() {
 
   const { position } = useWatchPosition(true)
   const [mapInstance, setMapInstance] = useState<LeafletMap | null>(null)
-  const [baseLayer, setBaseLayer] = useState<'osm' | 'sat'>('osm')
+  const [baseLayer, setBaseLayer] = useState('osm')
+  const [showBasePicker, setShowBasePicker] = useState(false)
+  const baseDef = findBaseLayer(baseLayer)
 
   const [mode, setMode] = useState<Mode>('view')
   const [zoneDraft, setZoneDraft] = useState<LatLng[]>([])
@@ -256,21 +259,13 @@ export default function MapPage() {
           style={{ height: '100%', width: '100%' }}
           ref={setMapInstance}
         >
-          {baseLayer === 'osm' ? (
-            <TileLayer
-              attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
-              url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-              maxZoom={22}
-              maxNativeZoom={19}
-            />
-          ) : (
-            <TileLayer
-              attribution="&copy; Esri — Source: Esri, Maxar, Earthstar Geographics"
-              url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
-              maxZoom={22}
-              maxNativeZoom={19}
-            />
-          )}
+          <TileLayer
+            key={baseDef.id}
+            attribution={baseDef.attribution}
+            url={baseDef.url}
+            maxZoom={22}
+            maxNativeZoom={baseDef.maxNativeZoom}
+          />
           <ScaleControl />
           <InitialView
             ready={project !== undefined && points !== undefined}
@@ -427,10 +422,10 @@ export default function MapPage() {
             <LocateFixed size={20} />
           </button>
           <button
-            className={`icon-btn ${baseLayer === 'sat' ? 'active' : ''}`}
-            onClick={() => setBaseLayer((b) => (b === 'osm' ? 'sat' : 'osm'))}
+            className={`icon-btn ${baseLayer !== 'osm' ? 'active' : ''}`}
+            onClick={() => setShowBasePicker(true)}
             type="button"
-            aria-label="Vue satellite"
+            aria-label="Fond de carte"
           >
             <Globe size={20} />
           </button>
@@ -546,6 +541,30 @@ export default function MapPage() {
         )}
         {selectedLine && mode === 'view' && <SiteLinePanel line={selectedLine} onClose={() => setSelection(null)} />}
       </div>
+
+      {/* Base map picker */}
+      {showBasePicker && (
+        <Modal title="Fond de carte" onClose={() => setShowBasePicker(false)}>
+          <div className="list">
+            {BASE_LAYERS.map((b) => (
+              <div
+                key={b.id}
+                className="list-item"
+                style={baseLayer === b.id ? { borderColor: 'var(--accent)' } : undefined}
+                onClick={() => {
+                  setBaseLayer(b.id)
+                  setShowBasePicker(false)
+                }}
+              >
+                <span className="list-item-body list-item-title" style={{ fontWeight: 500 }}>
+                  {b.label}
+                </span>
+                {baseLayer === b.id && <Check size={18} style={{ color: 'var(--accent)' }} />}
+              </div>
+            ))}
+          </div>
+        </Modal>
+      )}
 
       {/* Layer visibility sheet */}
       {showLayerSheet && (

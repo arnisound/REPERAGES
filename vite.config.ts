@@ -44,10 +44,26 @@ export default defineConfig({
             },
           },
           {
-            urlPattern: /^https:\/\/server\.arcgisonline\.com\/ArcGIS\/rest\/services\/World_Imagery\/.*/,
+            urlPattern: /^https:\/\/server\.arcgisonline\.com\/ArcGIS\/rest\/services\/.*/,
             handler: 'CacheFirst',
             options: {
               cacheName: 'sat-tiles',
+              expiration: { maxEntries: 800, maxAgeSeconds: 60 * 60 * 24 * 30 },
+            },
+          },
+          {
+            urlPattern: /^https:\/\/[a-z]\.tile\.opentopomap\.org\/.*/,
+            handler: 'CacheFirst',
+            options: {
+              cacheName: 'topo-tiles',
+              expiration: { maxEntries: 500, maxAgeSeconds: 60 * 60 * 24 * 30 },
+            },
+          },
+          {
+            urlPattern: /^https:\/\/[a-z]\.basemaps\.cartocdn\.com\/.*/,
+            handler: 'CacheFirst',
+            options: {
+              cacheName: 'carto-tiles',
               expiration: { maxEntries: 500, maxAgeSeconds: 60 * 60 * 24 * 30 },
             },
           },

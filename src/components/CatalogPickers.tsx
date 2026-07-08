@@ -144,14 +144,26 @@ export function ObjectPickerModal({
   onClose: () => void
 }) {
   const [tab, setTab] = useState<Discipline>('implantation')
-  const [specDef, setSpecDef] = useState<ObjectDef | null>(null)
+  const [specDef, setSpecDef] = useState<{ def: ObjectDef; layer: Discipline } | null>(null)
   const [creating, setCreating] = useState(false)
-  const customModels =
-    useLiveQuery(() => db.customModels.where('layer').equals(tab).sortBy('name'), [tab]) ?? []
+  const [query, setQuery] = useState('')
+  const allModels = useLiveQuery(() => db.customModels.toArray(), []) ?? []
+  const customModels = allModels.filter((m) => m.layer === tab).sort((a, b) => a.name.localeCompare(b.name))
 
-  function pickDef(def: ObjectDef, spec?: string) {
+  // Recherche trans-calques : catalogue + banque perso
+  const q = query.trim().toLowerCase()
+  const modelResults = q ? allModels.filter((m) => m.name.toLowerCase().includes(q)) : []
+  const defResults = q
+    ? DISCIPLINES.flatMap((d) =>
+        OBJECT_CATALOG[d]
+          .filter((def) => !def.legacy && def.label.toLowerCase().includes(q))
+          .map((def) => ({ layer: d, def })),
+      )
+    : []
+
+  function pickDef(def: ObjectDef, layer: Discipline, spec?: string) {
     onPick({
-      layer: tab,
+      layer,
       symbolType: def.type,
       typeLabel: def.label,
       glyph: def.glyph,
@@ -181,9 +193,71 @@ export function ObjectPickerModal({
       {creating ? (
         <NewModelForm layer={tab} onCreated={pickModel} onCancel={() => setCreating(false)} />
       ) : specDef ? (
-        <SpecStep title={specDef.label} specs={specDef.specs!} onPick={(s) => pickDef(specDef, s)} onBack={() => setSpecDef(null)} />
+        <SpecStep
+          title={specDef.def.label}
+          specs={specDef.def.specs!}
+          onPick={(s) => pickDef(specDef.def, specDef.layer, s)}
+          onBack={() => setSpecDef(null)}
+        />
+      ) : q ? (
+        <>
+          <div className="field" style={{ marginBottom: 12 }}>
+            <input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Rechercher un objet…"
+              autoFocus
+            />
+          </div>
+          <div className="list">
+            {modelResults.length + defResults.length === 0 && (
+              <p style={{ color: 'var(--text-dim)', textAlign: 'center', padding: 20 }}>
+                Aucun objet ne correspond à « {query} ».
+              </p>
+            )}
+            {modelResults.map((m) => (
+              <div key={m.id} className="list-item" onClick={() => pickModel(m)}>
+                <span
+                  style={{ width: 12, height: 12, borderRadius: '50%', background: m.color ?? DISCIPLINE_COLORS[m.layer], flexShrink: 0 }}
+                />
+                <div className="list-item-body">
+                  <div className="list-item-title" style={{ fontWeight: 500 }}>
+                    {m.name}
+                  </div>
+                  <div className="list-item-sub">
+                    {DISCIPLINE_LABELS[m.layer]} · Modèle perso{!m.point && ` · ${m.w} × ${m.h} m`}
+                  </div>
+                </div>
+              </div>
+            ))}
+            {defResults.map(({ layer, def }) => (
+              <div
+                key={`${layer}:${def.type}`}
+                className="list-item"
+                onClick={() => (def.specs ? setSpecDef({ def, layer }) : pickDef(def, layer))}
+              >
+                <span
+                  style={{ width: 12, height: 12, borderRadius: '50%', background: DISCIPLINE_COLORS[layer], flexShrink: 0 }}
+                />
+                <div className="list-item-body">
+                  <div className="list-item-title" style={{ fontWeight: 500 }}>
+                    {def.label}
+                  </div>
+                  <div className="list-item-sub">
+                    {DISCIPLINE_LABELS[layer]}
+                    {!def.point && ` · ${def.w} × ${def.h} m`}
+                    {def.specs && ' · calibre au choix'}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </>
       ) : (
         <>
+          <div className="field" style={{ marginBottom: 12 }}>
+            <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Rechercher un objet…" />
+          </div>
           <DisciplineTabs value={tab} onChange={setTab} />
           <div className="list">
             {customModels.map((m) => (
@@ -229,7 +303,7 @@ export function ObjectPickerModal({
               <div
                 key={def.type}
                 className="list-item"
-                onClick={() => (def.specs ? setSpecDef(def) : pickDef(def))}
+                onClick={() => (def.specs ? setSpecDef({ def, layer: tab }) : pickDef(def, tab))}
               >
                 <span
                   style={{

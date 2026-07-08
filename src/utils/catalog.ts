@@ -54,6 +54,10 @@ export const ELEC_SPECS = [
 
 export const RJ45_SPECS = ['Cat 5e', 'Cat 6', 'Cat 6a', 'Cat 7']
 
+export const KVA_SPECS = ['20 kVA', '40 kVA', '60 kVA', '100 kVA', '200 kVA']
+
+export const EXTINCTEUR_SPECS = ['Eau pulvérisée', 'CO2', 'Poudre ABC']
+
 export const OBJECT_CATALOG: Record<Discipline, ObjectDef[]> = {
   implantation: [
     { type: 'tente_3x3', label: 'Tente 3×3 m', w: 3, h: 3, glyph: 'T' },
@@ -75,6 +79,21 @@ export const OBJECT_CATALOG: Record<Discipline, ObjectDef[]> = {
     { type: 'chaise', label: 'Chaise', w: 0.5, h: 0.5, glyph: 'CH', point: true },
     { type: 'panneau', label: 'Panneau / signalétique', w: 0.8, h: 0.1, glyph: 'PA', point: true },
     { type: 'deco', label: 'Décoration', w: 0.5, h: 0.5, glyph: 'DE', point: true },
+    { type: 'barnum_4x4', label: 'Barnum 4×4 m', w: 4, h: 4, glyph: 'BA' },
+    { type: 'barnum_4x8', label: 'Barnum 4×8 m', w: 8, h: 4, glyph: 'BA' },
+    { type: 'pagode_5x5', label: 'Pagode 5×5 m', w: 5, h: 5, glyph: 'PG' },
+    { type: 'stand_marche', label: 'Stand marché 3×2 m', w: 3, h: 2, glyph: 'ST' },
+    { type: 'tribune', label: 'Tribune 10×5 m', w: 10, h: 5, glyph: 'TR' },
+    { type: 'mange_debout', label: 'Mange-debout', w: 0.8, h: 0.8, glyph: 'MD' },
+    { type: 'billetterie', label: 'Billetterie / guichet 3×2 m', w: 3, h: 2, glyph: 'BI' },
+    { type: 'arche_entree', label: "Arche d'entrée", w: 6, h: 0.5, glyph: 'AR' },
+    { type: 'vestiaire', label: 'Vestiaire 3×3 m', w: 3, h: 3, glyph: 'VE' },
+    { type: 'loge', label: 'Loge artiste 5×5 m', w: 5, h: 5, glyph: 'LO' },
+    { type: 'catering', label: 'Catering 6×4 m', w: 6, h: 4, glyph: 'CA' },
+    { type: 'remorque_frigo', label: 'Remorque frigorifique', w: 4, h: 2, glyph: 'FR' },
+    { type: 'poubelle', label: 'Poubelle / tri', w: 0.6, h: 0.6, glyph: 'PB', point: true },
+    { type: 'benne', label: 'Benne à déchets', w: 4, h: 2, glyph: 'BE' },
+    { type: 'mat_drapeau', label: 'Mât / drapeau', w: 0.3, h: 0.3, glyph: 'DR', point: true },
     { type: 'objet_custom', label: 'Objet personnalisé', w: 1, h: 1, glyph: '?' },
   ],
   structures: [
@@ -86,11 +105,20 @@ export const OBJECT_CATALOG: Record<Discipline, ObjectDef[]> = {
     { type: 'pied_levage', label: 'Pied de levage / wind-up', w: 0.6, h: 0.6, glyph: 'WU', specs: HEIGHT_SPECS },
     { type: 'moteur', label: 'Moteur / palan', w: 0.3, h: 0.3, glyph: 'MO', point: true },
     { type: 'embase', label: 'Embase / base plate', w: 0.8, h: 0.8, glyph: 'BP', point: true },
+    { type: 'bloc_beton', label: 'Bloc béton / lest', w: 1.2, h: 0.6, glyph: 'BB' },
+    { type: 'escalier', label: "Escalier d'accès scène", w: 1.2, h: 2, glyph: 'ES' },
+    { type: 'rampe_pmr', label: 'Rampe PMR', w: 1.5, h: 6, glyph: 'PMR' },
+    { type: 'tour_delai', label: 'Tour délai / régie son', w: 3, h: 3, glyph: 'TD', specs: HEIGHT_SPECS },
+    { type: 'portique', label: "Portique d'entrée", w: 8, h: 1, glyph: 'PO', specs: HEIGHT_SPECS },
   ],
   electricite: [
     { type: 'armoire_electrique', label: 'Armoire électrique', w: 0.8, h: 0.6, glyph: 'AE', specs: ELEC_SPECS },
     { type: 'coffret', label: 'Coffret de distribution', w: 0.4, h: 0.3, glyph: 'C', point: true, specs: ELEC_SPECS },
-    { type: 'groupe_electrogene', label: 'Groupe électrogène 2×1 m', w: 2, h: 1, glyph: 'GE' },
+    { type: 'groupe_electrogene', label: 'Groupe électrogène 2×1 m', w: 2, h: 1, glyph: 'GE', specs: KVA_SPECS },
+    { type: 'transfo', label: 'Transformateur / poste', w: 2, h: 1.5, glyph: 'TF' },
+    { type: 'coffret_forain', label: 'Coffret forain', w: 0.4, h: 0.4, glyph: 'CF', point: true, specs: ELEC_SPECS },
+    { type: 'onduleur', label: 'Onduleur / UPS', w: 0.6, h: 0.8, glyph: 'UPS', point: true },
+    { type: 'candelabre', label: 'Candélabre / mât éclairage', w: 0.4, h: 0.4, glyph: 'CD', point: true },
     { type: 'prise_mono', label: 'Point de raccordement', w: 0.2, h: 0.2, glyph: '~', point: true, specs: ELEC_SPECS },
     { type: 'prise_tri', label: 'Raccordement triphasé 32/63A', w: 0.2, h: 0.2, glyph: '3~', point: true, legacy: true },
     { type: 'enrouleur', label: 'Enrouleur / multiprise', w: 0.3, h: 0.3, glyph: 'EN', point: true },
@@ -106,6 +134,9 @@ export const OBJECT_CATALOG: Record<Discipline, ObjectDef[]> = {
     { type: 'point_fibre', label: 'Arrivée fibre', w: 0.2, h: 0.2, glyph: 'FO', point: true },
     { type: 'convertisseur_fibre', label: 'Convertisseur fibre / média', w: 0.2, h: 0.2, glyph: 'CV', point: true },
     { type: 'serveur', label: 'Serveur / NAS', w: 0.6, h: 0.8, glyph: 'SRV' },
+    { type: 'antenne_4g', label: 'Antenne 4G/5G / Starlink', w: 0.6, h: 0.6, glyph: '4G', point: true },
+    { type: 'pont_wifi', label: 'Pont Wi-Fi point à point', w: 0.3, h: 0.3, glyph: 'PW', point: true },
+    { type: 'intercom', label: 'Poste intercom', w: 0.2, h: 0.2, glyph: 'IC', point: true },
   ],
   video: [
     { type: 'ecran_led', label: 'Écran LED 4×3 m', w: 4, h: 0.5, glyph: 'LED' },
@@ -117,6 +148,9 @@ export const OBJECT_CATALOG: Record<Discipline, ObjectDef[]> = {
     { type: 'regie_video', label: 'Régie vidéo 2×1 m', w: 2, h: 1, glyph: 'RV' },
     { type: 'melangeur', label: 'Mélangeur / grille', w: 0.5, h: 0.4, glyph: 'MG', point: true },
     { type: 'enregistreur', label: 'Enregistreur / streaming', w: 0.4, h: 0.4, glyph: 'REC', point: true },
+    { type: 'mur_images', label: "Mur d'images 6×3 m", w: 6, h: 0.5, glyph: 'MUR' },
+    { type: 'prompteur', label: 'Prompteur / retour plateau', w: 0.6, h: 0.4, glyph: 'PT', point: true },
+    { type: 'pied_camera', label: 'Pied caméra / trépied', w: 0.8, h: 0.8, glyph: 'TP', point: true },
   ],
   eau: [
     { type: 'arrivee_eau', label: "Arrivée d'eau", w: 0.3, h: 0.3, glyph: 'E', point: true },
@@ -137,6 +171,11 @@ export const OBJECT_CATALOG: Record<Discipline, ObjectDef[]> = {
     { type: 'platine_dj', label: 'Régie DJ 2×1 m', w: 2, h: 1, glyph: 'DJ' },
     { type: 'micro', label: 'Position micro', w: 0.2, h: 0.2, glyph: 'M', point: true },
     { type: 'ampli', label: 'Rack ampli', w: 0.6, h: 0.8, glyph: 'AR', point: true },
+    { type: 'stagebox', label: 'Stagebox / patch scène', w: 0.5, h: 0.4, glyph: 'SB', point: true },
+    { type: 'di_box', label: 'Boîte de direct (DI)', w: 0.2, h: 0.2, glyph: 'DI', point: true },
+    { type: 'micro_hf', label: 'Récepteur micro HF', w: 0.4, h: 0.3, glyph: 'HF', point: true },
+    { type: 'pied_micro', label: 'Pied de micro', w: 0.3, h: 0.3, glyph: 'PM', point: true },
+    { type: 'console_retour', label: 'Console retours 2×1 m', w: 2, h: 1, glyph: 'MON' },
   ],
   lumiere: [
     { type: 'projecteur', label: 'Projecteur', w: 0.4, h: 0.4, glyph: 'PR', point: true },
@@ -149,15 +188,25 @@ export const OBJECT_CATALOG: Record<Discipline, ObjectDef[]> = {
     { type: 'gradateur', label: 'Rack gradateur', w: 0.6, h: 0.8, glyph: 'GR', point: true },
     { type: 'pupitre_lumiere', label: 'Pupitre lumière', w: 1.2, h: 0.8, glyph: 'PU' },
     { type: 'poursuite', label: 'Poursuite', w: 1, h: 1, glyph: 'PS', point: true },
+    { type: 'blinder', label: 'Blinder', w: 0.5, h: 0.3, glyph: 'BL', point: true },
+    { type: 'strobe', label: 'Stroboscope', w: 0.4, h: 0.3, glyph: 'SR', point: true },
+    { type: 'laser', label: 'Laser', w: 0.4, h: 0.4, glyph: 'LZ', point: true },
+    { type: 'haze', label: 'Machine à brouillard (haze)', w: 0.5, h: 0.4, glyph: 'HZ', point: true },
+    { type: 'contre', label: 'Rampe de contres', w: 2, h: 0.3, glyph: 'CTR' },
   ],
   securite: [
     { type: 'pc_securite', label: 'PC sécurité 3×3 m', w: 3, h: 3, glyph: 'PC' },
     { type: 'poste_secours', label: 'Poste de secours 3×3 m', w: 3, h: 3, glyph: '+' },
-    { type: 'extincteur', label: 'Extincteur', w: 0.2, h: 0.2, glyph: 'EX', point: true },
+    { type: 'extincteur', label: 'Extincteur', w: 0.2, h: 0.2, glyph: 'EX', point: true, specs: EXTINCTEUR_SPECS },
     { type: 'issue_secours', label: 'Issue / sortie de secours', w: 0.3, h: 0.3, glyph: 'IS', point: true },
     { type: 'panneau_evac', label: "Panneau d'évacuation", w: 0.3, h: 0.1, glyph: 'EV', point: true },
     { type: 'bloc_secours', label: 'Éclairage de secours (BAES)', w: 0.3, h: 0.2, glyph: 'BS', point: true },
     { type: 'point_controle', label: "Point de contrôle / d'accès", w: 0.3, h: 0.3, glyph: 'CT', point: true },
+    { type: 'ria', label: 'RIA / point incendie', w: 0.4, h: 0.4, glyph: 'RIA', point: true },
+    { type: 'defibrillateur', label: 'Défibrillateur (DAE)', w: 0.2, h: 0.2, glyph: 'DAE', point: true },
+    { type: 'chicane', label: 'Chicane anti-véhicule', w: 2, h: 1, glyph: 'CH' },
+    { type: 'bloc_beton_secu', label: 'Bloc béton anti-intrusion', w: 1.2, h: 0.6, glyph: 'BB' },
+    { type: 'talkie', label: 'Point talkie / radio', w: 0.2, h: 0.2, glyph: 'TK', point: true },
   ],
 }
 

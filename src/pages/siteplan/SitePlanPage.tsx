@@ -37,6 +37,7 @@ import {
 import { getCurrentPosition } from '../../hooks/useGeolocation'
 import { pxPerMeter } from '../../utils/scale'
 import { canRedo, canUndo, redo, subscribeHistory, undo } from '../../utils/history'
+import { BASE_LAYERS } from '../../utils/baseLayers'
 import {
   DISCIPLINES,
   DISCIPLINE_COLORS,
@@ -46,6 +47,7 @@ import {
 } from '../../types'
 import { LINE_CATALOG, type LineDef, type PlacePayload } from '../../utils/catalog'
 import { formatArea, formatMeters, lineLengthMeters, offsetLatLng, polygonAreaM2, polygonCenter } from '../../utils/geo'
+import { generateDxf } from '../../utils/dxf'
 import Modal from '../../components/Modal'
 import TopBar from '../../components/TopBar'
 import { LinePickerModal, ObjectPickerModal } from '../../components/CatalogPickers'
@@ -85,6 +87,7 @@ export default function SitePlanPage() {
   const [visibleLayers, setVisibleLayers] = useState<Set<Discipline>>(new Set(DISCIPLINES))
   const [showPoints, setShowPoints] = useState(true)
   const [baseLayer, setBaseLayer] = useState<SitePlanBase>('osm')
+  const [showBasePicker, setShowBasePicker] = useState(false)
   const [viewScale, setViewScale] = useState(10)
   const [overlayEditId, setOverlayEditId] = useState<string | null>(null)
   const [photoUrls, setPhotoUrls] = useState<Map<string, string>>(new Map())
@@ -336,6 +339,60 @@ export default function SitePlanPage() {
     setShowExport(false)
   }
 
+  async function exportPdf() {
+    const dataUrl = exportHandle.current?.exportImage(2400)
+    if (!dataUrl || !zone) return
+    const { jsPDF } = await import('jspdf')
+    const pdf = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' })
+    const pageW = 297
+    const pageH = 210
+    const margin = 12
+    pdf.setFontSize(16)
+    pdf.text(project?.name ?? 'Plan du site', margin, margin + 4)
+    pdf.setFontSize(9)
+    pdf.setTextColor(90)
+    pdf.text(
+      `${project?.venueName ? project.venueName + ' · ' : ''}${project?.eventDate ?? ''} · Zone : ${formatArea(
+        polygonAreaM2(zone),
+      )} · Grille : ${gridStep(viewScale)} m · Nord en haut`,
+      margin,
+      margin + 10,
+    )
+    // Image ajustée dans la page en conservant le ratio
+    const img = new Image()
+    img.src = dataUrl
+    await new Promise((resolve) => {
+      img.onload = resolve
+    })
+    const availW = pageW - 2 * margin
+    const availH = pageH - margin - 34
+    const ratio = Math.min(availW / img.width, availH / img.height)
+    pdf.addImage(dataUrl, 'PNG', margin, margin + 14, img.width * ratio, img.height * ratio)
+    // Légende des calques visibles
+    pdf.setFontSize(8)
+    let x = margin
+    const legendY = pageH - margin
+    for (const d of DISCIPLINES.filter((d) => visibleLayers.has(d))) {
+      const hex = DISCIPLINE_COLORS[d]
+      pdf.setFillColor(parseInt(hex.slice(1, 3), 16), parseInt(hex.slice(3, 5), 16), parseInt(hex.slice(5, 7), 16))
+      pdf.circle(x + 1.2, legendY - 1, 1.2, 'F')
+      pdf.setTextColor(60)
+      pdf.text(DISCIPLINE_LABELS[d], x + 3.4, legendY)
+      x += pdf.getTextWidth(DISCIPLINE_LABELS[d]) + 10
+    }
+    const name = (project?.name ?? 'plan').replace(/[^a-z0-9]+/gi, '-').toLowerCase()
+    pdf.save(`plan-${name}.pdf`)
+    setShowExport(false)
+  }
+
+  function exportDxf() {
+    if (!zone) return
+    const dxf = generateDxf(zone, objects, lines)
+    const name = (project?.name ?? 'plan').replace(/[^a-z0-9]+/gi, '-').toLowerCase()
+    saveAs(new Blob([dxf], { type: 'application/dxf' }), `plan-${name}.dxf`)
+    setShowExport(false)
+  }
+
   function exportPrint() {
     const dataUrl = exportHandle.current?.exportImage(2400)
     if (!dataUrl || !zone) return
@@ -461,12 +518,11 @@ export default function SitePlanPage() {
             </button>
             <button
               className={`icon-btn ${baseLayer !== 'none' ? 'active' : ''}`}
-              onClick={() => setBaseLayer((b) => (b === 'osm' ? 'sat' : b === 'sat' ? 'none' : 'osm'))}
+              onClick={() => setShowBasePicker(true)}
               type="button"
               aria-label="Fond de carte"
-              title={baseLayer === 'osm' ? 'Fond : plan' : baseLayer === 'sat' ? 'Fond : satellite' : 'Fond : aucun'}
             >
-              {baseLayer === 'osm' ? <MapIcon size={20} /> : baseLayer === 'sat' ? <Globe size={20} /> : <Grid3x3 size={20} />}
+              {baseLayer === 'none' ? <Grid3x3 size={20} /> : baseLayer === 'sat' ? <Globe size={20} /> : <MapIcon size={20} />}
             </button>
           </div>
 
@@ -747,18 +803,51 @@ export default function SitePlanPage() {
         />
       )}
 
+      {showBasePicker && (
+        <Modal title="Fond du plan" onClose={() => setShowBasePicker(false)}>
+          <div className="list">
+            {[{ id: 'none', label: 'Aucun (grille seule)' }, ...BASE_LAYERS].map((b) => (
+              <div
+                key={b.id}
+                className="list-item"
+                style={baseLayer === b.id ? { borderColor: 'var(--accent)' } : undefined}
+                onClick={() => {
+                  setBaseLayer(b.id)
+                  setShowBasePicker(false)
+                }}
+              >
+                <span className="list-item-body list-item-title" style={{ fontWeight: 500 }}>
+                  {b.label}
+                </span>
+                {baseLayer === b.id && <Check size={18} style={{ color: 'var(--accent)' }} />}
+              </div>
+            ))}
+          </div>
+        </Modal>
+      )}
+
       {showExport && (
         <Modal title="Exporter le plan" onClose={() => setShowExport(false)}>
           <p style={{ fontSize: 13, color: 'var(--text-dim)', marginBottom: 14 }}>
             La vue actuelle du plan est exportée telle quelle (cadrez et choisissez les calques avant d'exporter).
           </p>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            <button className="btn block" onClick={exportPrint} type="button">
-              Dossier à imprimer / PDF
+            <button className="btn block" onClick={exportPdf} type="button">
+              Fichier PDF (A4 paysage)
+            </button>
+            <button className="btn secondary block" onClick={exportPrint} type="button">
+              Dossier à imprimer
             </button>
             <button className="btn secondary block" onClick={exportPng} type="button">
-              Télécharger l'image (PNG)
+              Image PNG haute résolution
             </button>
+            <button className="btn secondary block" onClick={exportDxf} type="button">
+              DXF — AutoCAD / DWG
+            </button>
+            <p style={{ fontSize: 12, color: 'var(--text-dim)' }}>
+              Le DXF contient la zone, les objets et les câbles en entités CAO à l'échelle (mètres), un calque par
+              discipline — AutoCAD l'ouvre directement et l'enregistre en DWG.
+            </p>
           </div>
         </Modal>
       )}
