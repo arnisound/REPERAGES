@@ -48,12 +48,16 @@ import {
 import { LINE_CATALOG, type LineDef, type PlacePayload } from '../../utils/catalog'
 import { formatArea, formatMeters, lineLengthMeters, offsetLatLng, polygonAreaM2, polygonCenter } from '../../utils/geo'
 import { generateDxf } from '../../utils/dxf'
+import { aggregateCuts } from '../../utils/cutlist'
+import { computeMaterialSummary } from '../../utils/materialSummary'
 import Modal from '../../components/Modal'
 import TopBar from '../../components/TopBar'
 import { LinePickerModal, ObjectPickerModal } from '../../components/CatalogPickers'
 import { SiteLinePanel, SiteObjectPanel } from '../../components/SitePanels'
+import PrintFrameOverlay from './PrintFrameOverlay'
 import SitePlanCanvas, {
   gridStep,
+  type CropRect,
   type OverlayItem,
   type SitePlanBase,
   type SitePlanCanvasHandle,
@@ -73,6 +77,19 @@ export default function SitePlanPage() {
     useLiveQuery(() => (projectId ? db.points.where('projectId').equals(projectId).toArray() : []), [projectId]) ?? []
   const plans =
     useLiveQuery(() => (projectId ? db.plans.where('projectId').equals(projectId).toArray() : []), [projectId]) ?? []
+  // Objets/câbles des plans importés — pour un récap matériel complet à l'export
+  const planObjects =
+    useLiveQuery(async () => {
+      if (!projectId) return []
+      const list = await db.plans.where('projectId').equals(projectId).toArray()
+      return (await Promise.all(list.map((p) => db.planObjects.where('planId').equals(p.id).toArray()))).flat()
+    }, [projectId]) ?? []
+  const planConnections =
+    useLiveQuery(async () => {
+      if (!projectId) return []
+      const list = await db.plans.where('projectId').equals(projectId).toArray()
+      return (await Promise.all(list.map((p) => db.planConnections.where('planId').equals(p.id).toArray()))).flat()
+    }, [projectId]) ?? []
 
   const [mode, setMode] = useState<SitePlanMode>('view')
   const [selection, setSelection] = useState<SiteSelection>(null)
@@ -93,6 +110,9 @@ export default function SitePlanPage() {
   const [photoUrls, setPhotoUrls] = useState<Map<string, string>>(new Map())
   const exportHandle = useRef<SitePlanCanvasHandle | null>(null)
   const [showExport, setShowExport] = useState(false)
+  // Zone d'impression : cadre en pixels-écran, ratio A4 paysage par défaut
+  const [printFrame, setPrintFrame] = useState<CropRect | null>(null)
+  const [busy, setBusy] = useState('')
 
   // Historique annuler/rétablir (les hooks Dexie enregistrent, on affiche l'état)
   const historyTick = useSyncExternalStore(subscribeHistory, () => `${canUndo()}:${canRedo()}`)
@@ -331,70 +351,221 @@ export default function SitePlanPage() {
     return new Blob([bytes], { type: mime })
   }
 
+  const slug = () => (project?.name ?? 'plan').replace(/[^a-z0-9]+/gi, '-').toLowerCase()
+  const captureCrop = () => printFrame ?? undefined
+  const cableSizes = (() => {
+    if (!projectId) return [5, 10, 20]
+    try {
+      const s = localStorage.getItem(`cable-sizes:${projectId}`)
+      const p = s ? JSON.parse(s) : null
+      return Array.isArray(p) && p.length ? (p as number[]) : [5, 10, 20]
+    } catch {
+      return [5, 10, 20]
+    }
+  })()
+
   function exportPng() {
-    const dataUrl = exportHandle.current?.exportImage(2400)
+    const dataUrl = exportHandle.current?.exportImage({ crop: captureCrop() })
     if (!dataUrl) return
-    const name = (project?.name ?? 'plan').replace(/[^a-z0-9]+/gi, '-').toLowerCase()
-    saveAs(dataUrlToBlob(dataUrl), `plan-${name}.png`)
+    saveAs(dataUrlToBlob(dataUrl), `plan-${slug()}.png`)
     setShowExport(false)
+    setPrintFrame(null)
   }
 
   async function exportPdf() {
-    const dataUrl = exportHandle.current?.exportImage(2400)
+    const dataUrl = exportHandle.current?.exportImage({ crop: captureCrop() })
     if (!dataUrl || !zone) return
-    const { jsPDF } = await import('jspdf')
-    const pdf = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' })
-    const pageW = 297
-    const pageH = 210
-    const margin = 12
-    pdf.setFontSize(16)
-    pdf.text(project?.name ?? 'Plan du site', margin, margin + 4)
-    pdf.setFontSize(9)
-    pdf.setTextColor(90)
-    pdf.text(
-      `${project?.venueName ? project.venueName + ' · ' : ''}${project?.eventDate ?? ''} · Zone : ${formatArea(
-        polygonAreaM2(zone),
-      )} · Grille : ${gridStep(viewScale)} m · Nord en haut`,
-      margin,
-      margin + 10,
-    )
-    // Image ajustée dans la page en conservant le ratio
-    const img = new Image()
-    img.src = dataUrl
-    await new Promise((resolve) => {
-      img.onload = resolve
-    })
-    const availW = pageW - 2 * margin
-    const availH = pageH - margin - 34
-    const ratio = Math.min(availW / img.width, availH / img.height)
-    pdf.addImage(dataUrl, 'PNG', margin, margin + 14, img.width * ratio, img.height * ratio)
-    // Légende des calques visibles
-    pdf.setFontSize(8)
-    let x = margin
-    const legendY = pageH - margin
-    for (const d of DISCIPLINES.filter((d) => visibleLayers.has(d))) {
-      const hex = DISCIPLINE_COLORS[d]
-      pdf.setFillColor(parseInt(hex.slice(1, 3), 16), parseInt(hex.slice(3, 5), 16), parseInt(hex.slice(5, 7), 16))
-      pdf.circle(x + 1.2, legendY - 1, 1.2, 'F')
-      pdf.setTextColor(60)
-      pdf.text(DISCIPLINE_LABELS[d], x + 3.4, legendY)
-      x += pdf.getTextWidth(DISCIPLINE_LABELS[d]) + 10
+    setBusy('Génération du PDF…')
+    try {
+      const { jsPDF } = await import('jspdf')
+      const pdf = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' })
+      const pageW = 297
+      const pageH = 210
+      const margin = 12
+      const rgb = (hex: string): [number, number, number] => [
+        parseInt(hex.slice(1, 3), 16),
+        parseInt(hex.slice(3, 5), 16),
+        parseInt(hex.slice(5, 7), 16),
+      ]
+
+      // ---------- PAGE 1 : plan ----------
+      pdf.setFont('helvetica', 'bold')
+      pdf.setFontSize(17)
+      pdf.setTextColor(20)
+      pdf.text(project?.name ?? 'Plan du site', margin, margin + 4)
+      pdf.setFont('helvetica', 'normal')
+      pdf.setFontSize(9)
+      pdf.setTextColor(90)
+      const infoBits = [
+        project?.client && `Client : ${project.client}`,
+        project?.venueName,
+        project?.address,
+        project?.eventDate && `Date : ${project.eventDate}`,
+        `Zone : ${formatArea(polygonAreaM2(zone))}`,
+        `Grille : ${gridStep(viewScale)} m`,
+        'Nord en haut',
+      ].filter(Boolean) as string[]
+      pdf.text(infoBits.join('  ·  '), margin, margin + 10)
+
+      const img = new Image()
+      img.src = dataUrl
+      await new Promise((resolve) => {
+        img.onload = resolve
+      })
+      const availW = pageW - 2 * margin
+      const availH = pageH - margin - 32
+      const ratio = Math.min(availW / img.width, availH / img.height)
+      const imgW = img.width * ratio
+      const imgH = img.height * ratio
+      pdf.addImage(dataUrl, 'PNG', margin + (availW - imgW) / 2, margin + 14, imgW, imgH)
+
+      // Légende des calques visibles
+      pdf.setFontSize(8)
+      let lx = margin
+      const legendY = pageH - margin
+      for (const d of DISCIPLINES.filter((d) => visibleLayers.has(d))) {
+        pdf.setFillColor(...rgb(DISCIPLINE_COLORS[d]))
+        pdf.circle(lx + 1.2, legendY - 1, 1.2, 'F')
+        pdf.setTextColor(60)
+        pdf.text(DISCIPLINE_LABELS[d], lx + 3.4, legendY)
+        lx += pdf.getTextWidth(DISCIPLINE_LABELS[d]) + 10
+      }
+
+      // ---------- PAGES SUIVANTES : récap matériel ----------
+      const summary = computeMaterialSummary({
+        siteObjects: objects,
+        siteLines: lines,
+        planObjects,
+        planConnections,
+        plans,
+      })
+      if (summary.hasAnything) {
+        pdf.addPage()
+        let y = margin + 4
+        const lineH = 5
+        const ensure = (needed = lineH) => {
+          if (y + needed > pageH - margin) {
+            pdf.addPage()
+            y = margin + 4
+          }
+        }
+        pdf.setFont('helvetica', 'bold')
+        pdf.setFontSize(15)
+        pdf.setTextColor(20)
+        pdf.text('Récapitulatif matériel', margin, y)
+        y += 8
+        pdf.setFontSize(9)
+        pdf.setTextColor(60)
+        const totals: string[] = []
+        if (summary.powerTotal > 0) totals.push(`Puissance totale : ${summary.powerTotal.toFixed(1)} kW`)
+        if (summary.progressTotal.total > 0)
+          totals.push(`Montage : ${summary.progressTotal.done}/${summary.progressTotal.total} installés`)
+        if (totals.length) {
+          pdf.text(totals.join('   ·   '), margin, y)
+          y += 7
+        }
+
+        for (const d of DISCIPLINES) {
+          const objs = [...(summary.objectGroups.get(d)?.values() ?? [])]
+          const lns = [...(summary.lineGroups.get(d)?.values() ?? [])]
+          if (!objs.length && !lns.length) continue
+          ensure(10)
+          // Titre de calque
+          pdf.setFillColor(...rgb(DISCIPLINE_COLORS[d]))
+          pdf.circle(margin + 1.6, y - 1.4, 1.6, 'F')
+          pdf.setFont('helvetica', 'bold')
+          pdf.setFontSize(11)
+          pdf.setTextColor(20)
+          const power = summary.powerByLayer.get(d)
+          const prog = summary.progressByLayer.get(d)
+          const suffix = [power ? `${power.toFixed(1)} kW` : '', prog ? `${prog.done}/${prog.total} posés` : '']
+            .filter(Boolean)
+            .join(' · ')
+          pdf.text(`${DISCIPLINE_LABELS[d]}${suffix ? `   (${suffix})` : ''}`, margin + 4, y)
+          y += 6
+          pdf.setFont('helvetica', 'normal')
+          pdf.setFontSize(9)
+          pdf.setTextColor(40)
+
+          for (const g of objs) {
+            ensure()
+            pdf.text(`•  ${g.label}${g.dims ? ` — ${g.dims}` : ''}`, margin + 6, y)
+            pdf.text(`× ${g.count}`, pageW - margin, y, { align: 'right' })
+            y += lineH
+          }
+          for (const g of lns) {
+            ensure()
+            const total = g.runs.reduce((s, r) => s + r, 0)
+            pdf.text(`•  ${g.label}`, margin + 6, y)
+            pdf.text(`${g.runs.length} tirage(s) · ${formatMeters(total)}`, pageW - margin, y, { align: 'right' })
+            y += lineH
+            pdf.setTextColor(110)
+            if (g.unitLengthM) {
+              const el = g.runs.reduce((s, r) => s + Math.ceil(r / g.unitLengthM!), 0)
+              ensure()
+              pdf.text(`    → ${el} éléments de ${g.unitLengthM} m`, margin + 6, y)
+              y += lineH
+            }
+            if (g.sectionable && cableSizes.length) {
+              const cuts = aggregateCuts(g.runs, cableSizes)
+              if (cuts) {
+                const parts = [...cuts.counts.entries()]
+                  .sort((a, b) => b[0] - a[0])
+                  .map(([size, n]) => `${n}× ${size} m`)
+                ensure()
+                pdf.text(
+                  `    → tronçons : ${parts.join(', ')} (fourni ${formatMeters(cuts.supplied)}, chute ${formatMeters(
+                    Math.max(0, cuts.supplied - total),
+                  )})`,
+                  margin + 6,
+                  y,
+                )
+                y += lineH
+              }
+            }
+            if (g.uncalibratedRuns) {
+              ensure()
+              pdf.text(`    → +${g.uncalibratedRuns} tirage(s) sur plan non calibré`, margin + 6, y)
+              y += lineH
+            }
+            pdf.setTextColor(40)
+          }
+          y += 3
+        }
+      }
+
+      // Pied de page : numéros
+      const pageCount = pdf.getNumberOfPages()
+      for (let i = 1; i <= pageCount; i++) {
+        pdf.setPage(i)
+        pdf.setFontSize(7)
+        pdf.setTextColor(150)
+        pdf.text(`${project?.name ?? ''} — Repérages · page ${i}/${pageCount}`, pageW / 2, pageH - 4, {
+          align: 'center',
+        })
+      }
+      pdf.save(`plan-${slug()}.pdf`)
+      setShowExport(false)
+      setPrintFrame(null)
+    } finally {
+      setBusy('')
     }
-    const name = (project?.name ?? 'plan').replace(/[^a-z0-9]+/gi, '-').toLowerCase()
-    pdf.save(`plan-${name}.pdf`)
-    setShowExport(false)
   }
 
-  function exportDxf() {
+  async function exportDxf(withMap: boolean) {
     if (!zone) return
-    const dxf = generateDxf(zone, objects, lines)
-    const name = (project?.name ?? 'plan').replace(/[^a-z0-9]+/gi, '-').toLowerCase()
-    saveAs(new Blob([dxf], { type: 'application/dxf' }), `plan-${name}.dxf`)
-    setShowExport(false)
+    setBusy(withMap ? 'Récupération de la cartographie…' : 'Génération du DXF…')
+    try {
+      const dxf = await generateDxf(zone, objects, lines, { withMap })
+      saveAs(new Blob([dxf], { type: 'application/dxf' }), `plan-${slug()}.dxf`)
+    } finally {
+      setBusy('')
+      setShowExport(false)
+    }
   }
 
   function exportPrint() {
-    const dataUrl = exportHandle.current?.exportImage(2400)
+    const dataUrl = exportHandle.current?.exportImage({ crop: captureCrop() })
     if (!dataUrl || !zone) return
     const legend = DISCIPLINES.filter((d) => visibleLayers.has(d))
       .map(
@@ -493,6 +664,11 @@ export default function SitePlanPage() {
           <div className="map-chip">
             Zone : {formatArea(polygonAreaM2(zone))} · Grille {gridStep(viewScale)} m · Nord ↑
           </div>
+
+          {/* Cadre de zone d'impression (déplaçable + redimensionnable) */}
+          {printFrame && (
+            <PrintFrameOverlay frame={printFrame} onChange={setPrintFrame} onExport={() => setShowExport(true)} />
+          )}
 
           {/* Background toggle: plan → satellite → aucun */}
           <div className="map-fab-col">
@@ -828,27 +1004,77 @@ export default function SitePlanPage() {
 
       {showExport && (
         <Modal title="Exporter le plan" onClose={() => setShowExport(false)}>
-          <p style={{ fontSize: 13, color: 'var(--text-dim)', marginBottom: 14 }}>
-            La vue actuelle du plan est exportée telle quelle (cadrez et choisissez les calques avant d'exporter).
-          </p>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            <button className="btn block" onClick={exportPdf} type="button">
-              Fichier PDF (A4 paysage)
-            </button>
-            <button className="btn secondary block" onClick={exportPrint} type="button">
-              Dossier à imprimer
-            </button>
-            <button className="btn secondary block" onClick={exportPng} type="button">
-              Image PNG haute résolution
-            </button>
-            <button className="btn secondary block" onClick={exportDxf} type="button">
-              DXF — AutoCAD / DWG
-            </button>
-            <p style={{ fontSize: 12, color: 'var(--text-dim)' }}>
-              Le DXF contient la zone, les objets et les câbles en entités CAO à l'échelle (mètres), un calque par
-              discipline — AutoCAD l'ouvre directement et l'enregistre en DWG.
-            </p>
-          </div>
+          {busy ? (
+            <p className="empty-state">{busy}</p>
+          ) : (
+            <>
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 10,
+                  padding: 12,
+                  marginBottom: 14,
+                  background: 'var(--bg-elevated)',
+                  border: '1px solid var(--border)',
+                  borderRadius: 10,
+                }}
+              >
+                <div style={{ flex: 1, fontSize: 13 }}>
+                  <strong>Cadrage : {printFrame ? "zone d'impression" : 'vue actuelle'}</strong>
+                  <div style={{ color: 'var(--text-dim)', fontSize: 12, marginTop: 2 }}>
+                    {printFrame
+                      ? 'Le cadre bleu définit ce qui sera exporté.'
+                      : "Toute la vue visible sera exportée. Définissez un cadre pour n'imprimer qu'une partie."}
+                  </div>
+                </div>
+                <button
+                  className={printFrame ? 'btn' : 'btn secondary'}
+                  style={{ minHeight: 40, padding: '8px 12px' }}
+                  onClick={() => {
+                    if (printFrame) {
+                      setPrintFrame(null)
+                    } else {
+                      const sz = exportHandle.current?.getSize()
+                      if (sz && sz.width && sz.height) {
+                        // Cadre A4 paysage centré (~85 % de la vue)
+                        const fw = Math.min(sz.width * 0.85, sz.height * 0.85 * (297 / 210))
+                        const fh = fw * (210 / 297)
+                        setPrintFrame({ x: (sz.width - fw) / 2, y: (sz.height - fh) / 2, w: fw, h: fh })
+                      }
+                      setShowExport(false)
+                    }
+                  }}
+                  type="button"
+                >
+                  {printFrame ? 'Retirer le cadre' : 'Définir un cadre'}
+                </button>
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                <button className="btn block" onClick={exportPdf} type="button">
+                  Dossier PDF complet (plan + récap matériel)
+                </button>
+                <button className="btn secondary block" onClick={exportPng} type="button">
+                  Image PNG haute résolution
+                </button>
+                <button className="btn secondary block" onClick={exportPrint} type="button">
+                  Aperçu à imprimer (navigateur)
+                </button>
+                <button className="btn secondary block" onClick={() => exportDxf(true)} type="button">
+                  DXF + cartographie (AutoCAD / DWG)
+                </button>
+                <button className="btn secondary block" onClick={() => exportDxf(false)} type="button">
+                  DXF seul (sans fond de carte)
+                </button>
+                <p style={{ fontSize: 12, color: 'var(--text-dim)' }}>
+                  Le PDF reprend toutes les infos de l'événement, le plan puis le récap matériel détaillé sur autant de
+                  pages que nécessaire. Le DXF contient la zone, les objets et câbles en entités CAO (mètres, un calque
+                  par discipline) ; l'option « + cartographie » ajoute les bâtiments et voiries alentour depuis
+                  OpenStreetMap (nécessite une connexion).
+                </p>
+              </div>
+            </>
+          )}
         </Modal>
       )}
 

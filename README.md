@@ -24,7 +24,7 @@ Optimisée mobile en priorité, fonctionne aussi sur tablette et ordinateur. Ins
 - **Mesures et cotes** : outil règle pour mesurer au doigt, cotes permanentes en mètres sur le plan.
 - **Suivi de montage** : statut par élément (à installer / installé / vérifié), mode pointage sur le plan le jour J, progression par calque au récap.
 - **Bilan de puissance** : puissance kW par objet, totaux par calque et global.
-- **Export du plan** : fichier PDF A4 paysage (image + légende + métadonnées), image PNG haute résolution, dossier imprimable, et **DXF** ouvrable dans AutoCAD/QCAD/LibreCAD (entités CAO à l'échelle en mètres, un calque par discipline — enregistrable en DWG depuis AutoCAD).
+- **Export du plan** : **zone d'impression** ajustable au doigt (cadre A4), **dossier PDF multi-pages** (page plan + toutes les infos de l'événement, puis récap matériel détaillé par calque sur autant de pages que nécessaire), image PNG haute résolution, aperçu à imprimer, et **DXF** ouvrable dans AutoCAD/QCAD/LibreCAD (entités CAO à l'échelle en mètres, un calque par discipline, enregistrable en DWG) — avec option **contours cartographiques** (bâtiments et voiries alentour depuis OpenStreetMap).
 - **6 fonds de carte** : OpenStreetMap, satellite Esri, topographique (relief), terrain Esri, clair et sombre CARTO — sur la carte comme en fond du plan, mis en cache hors-ligne.
 - **Recherche d'objets** : champ de recherche trans-calques dans le sélecteur (catalogue + banque perso).
 - **Sauvegarde / transfert** : export d'un événement en `.zip` (données + photos), ré-import sur un autre appareil.

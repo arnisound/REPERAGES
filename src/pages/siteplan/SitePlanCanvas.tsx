@@ -13,9 +13,20 @@ export type SitePlanBase = string // 'none' ou id d'un fond de utils/baseLayers
 
 export type SiteSelection = { kind: 'object'; id: string } | { kind: 'line'; id: string } | null
 
+/** Rectangle de recadrage en pixels-écran (relatif au coin haut-gauche du canvas). */
+export interface CropRect {
+  x: number
+  y: number
+  w: number
+  h: number
+}
+
 /** Poignée d'export : capture la vue courante du plan en PNG haute résolution. */
 export interface SitePlanCanvasHandle {
-  exportImage: (targetWidthPx?: number) => string | null
+  /** Capture la vue ; si `crop` est fourni, limite au cadre (zone d'impression). */
+  exportImage: (opts?: { targetWidthPx?: number; crop?: CropRect }) => string | null
+  /** Taille actuelle du canvas en pixels-écran, pour dimensionner un cadre par défaut. */
+  getSize: () => { width: number; height: number }
 }
 
 /** Plan importé géoréférencé, affiché sous les objets. */
@@ -233,21 +244,27 @@ export default function SitePlanCanvas({
     return deg
   }
 
-  // Export : capture de la vue courante (WYSIWYG) en haute résolution
+  // Export : capture de la vue (WYSIWYG), éventuellement recadrée sur un cadre
   useEffect(() => {
     if (!exportRef) return
     exportRef.current = {
-      exportImage: (targetWidthPx = 2400) => {
+      exportImage: ({ targetWidthPx = 2400, crop } = {}) => {
         const stage = stageRef.current
         if (!stage || !stage.width()) return null
-        const pixelRatio = Math.max(1, Math.min(6, targetWidthPx / stage.width()))
-        return stage.toDataURL({ pixelRatio, mimeType: 'image/png' })
+        const cropW = crop ? crop.w : stage.width()
+        const pixelRatio = Math.max(1, Math.min(6, targetWidthPx / cropW))
+        return stage.toDataURL({
+          pixelRatio,
+          mimeType: 'image/png',
+          ...(crop ? { x: crop.x, y: crop.y, width: crop.w, height: crop.h } : {}),
+        })
       },
+      getSize: () => ({ width: size.width, height: size.height }),
     }
     return () => {
       exportRef.current = null
     }
-  }, [exportRef])
+  }, [exportRef, size])
 
   // Map tile background (semi-transparent, to situate the plan on the terrain)
   const tileImages = useRef(new Map<string, HTMLImageElement>())

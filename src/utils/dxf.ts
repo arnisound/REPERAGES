@@ -16,6 +16,7 @@ import {
 } from '../types'
 import { findLineDef, objectView } from './catalog'
 import { lineLengthMeters, polygonCenter, rectangleCorners, toLocalMeters } from './geo'
+import { fetchMapFeatures } from './overpass'
 
 /** Index de couleur AutoCAD (ACI) par discipline. */
 const DXF_COLORS: Record<Discipline, number> = {
@@ -41,11 +42,19 @@ function num(n: number) {
   return n.toFixed(3)
 }
 
-export function generateDxf(zone: LatLng[], objects: SiteObject[], lines: SiteLine[]): string {
+export async function generateDxf(
+  zone: LatLng[],
+  objects: SiteObject[],
+  lines: SiteLine[],
+  opts: { withMap?: boolean } = {},
+): Promise<string> {
   const ref = polygonCenter(zone)
   const local = (p: LatLng) => toLocalMeters(ref, p)
   const out: string[] = []
   const w = (...vals: (string | number)[]) => out.push(...vals.map(String))
+
+  // Contours cartographiques (bâtiments, routes, eau) autour de la zone
+  const mapFeatures = opts.withMap ? await fetchMapFeatures(zone, 80) : []
 
   const line = (layer: string, color: number, a: { x: number; y: number }, b: { x: number; y: number }) => {
     w(0, 'LINE', 8, layer, 62, color, 10, num(a.x), 20, num(a.y), 30, 0, 11, num(b.x), 21, num(b.y), 31, 0)
@@ -63,6 +72,9 @@ export function generateDxf(zone: LatLng[], objects: SiteObject[], lines: SiteLi
   // --- TABLES (calques) ---
   const layers: [string, number][] = [
     ['ZONE', 7],
+    ['CARTO_BATIMENTS', 8],
+    ['CARTO_VOIRIE', 9],
+    ['CARTO_EAU', 4],
     ...DISCIPLINES.map((d) => [layerName(d), DXF_COLORS[d]] as [string, number]),
   ]
   w(0, 'SECTION', 2, 'TABLES', 0, 'TABLE', 2, 'LAYER', 70, layers.length)
@@ -73,6 +85,15 @@ export function generateDxf(zone: LatLng[], objects: SiteObject[], lines: SiteLi
 
   // --- ENTITIES ---
   w(0, 'SECTION', 2, 'ENTITIES')
+
+  // Contours cartographiques
+  for (const f of mapFeatures) {
+    const layer = f.kind === 'building' ? 'CARTO_BATIMENTS' : f.kind === 'water' ? 'CARTO_EAU' : 'CARTO_VOIRIE'
+    const color = f.kind === 'building' ? 8 : f.kind === 'water' ? 4 : 9
+    const pts = f.points.map(local)
+    for (let i = 1; i < pts.length; i++) line(layer, color, pts[i - 1], pts[i])
+    if (f.closed && pts.length > 2) line(layer, color, pts[pts.length - 1], pts[0])
+  }
 
   // Zone du site (polygone fermé)
   const zonePts = zone.map(local)
