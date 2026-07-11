@@ -127,8 +127,37 @@ export function computeMaterialSummary(data: {
   return { objectGroups, lineGroups, powerByLayer, powerTotal, progressByLayer, progressTotal, hasAnything }
 }
 
+/**
+ * Suggestion de câbles de secours (spare) pour un type de câble : un
+ * pourcentage du nombre de tronçons prévus, minimum 1 dès qu'il y a un
+ * tirage, dans la longueur la plus utilisée.
+ */
+export function spareSuggestion(
+  counts: Map<number, number>,
+  sparePct: number,
+): { size: number; count: number } | null {
+  if (sparePct <= 0) return null
+  let pieces = 0
+  let bestSize = 0
+  let bestN = 0
+  for (const [size, n] of counts) {
+    pieces += n
+    if (n > bestN || (n === bestN && size > bestSize)) {
+      bestSize = size
+      bestN = n
+    }
+  }
+  if (!pieces) return null
+  return { size: bestSize, count: Math.max(1, Math.ceil((pieces * sparePct) / 100)) }
+}
+
 /** Lignes texte du récap matériel, incluant les découpes de tronçons. */
-export function materialSummaryText(summary: MaterialSummary, projectName: string, sizes: number[]): string[] {
+export function materialSummaryText(
+  summary: MaterialSummary,
+  projectName: string,
+  sizes: number[],
+  sparePct = 0,
+): string[] {
   const out: string[] = [`RÉCAP MATÉRIEL — ${projectName}`, '']
   for (const d of DISCIPLINES) {
     const objs = [...(summary.objectGroups.get(d)?.values() ?? [])]
@@ -150,6 +179,8 @@ export function materialSummaryText(summary: MaterialSummary, projectName: strin
         if (cuts) {
           const parts = [...cuts.counts.entries()].sort((a, b) => b[0] - a[0]).map(([size, n]) => `${n}× ${size} m`)
           line += ` → tronçons : ${parts.join(', ')} (fourni ${formatMeters(cuts.supplied)})`
+          const spare = spareSuggestion(cuts.counts, sparePct)
+          if (spare) line += ` → spare : +${spare.count}× ${spare.size} m`
         }
       }
       if (g.uncalibratedRuns) line += ` (+${g.uncalibratedRuns} tirage(s) sur plan non calibré)`

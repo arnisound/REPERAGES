@@ -170,6 +170,11 @@ export interface SiteLine {
   notes?: string
   /** Spécification technique (ex : TRI 63A, Cat 6a). */
   spec?: string
+  /**
+   * Extrémités aimantées : ids d'objets (armoire, stagebox…) auxquels le
+   * premier / dernier point est ancré — ils suivent l'objet déplacé.
+   */
+  anchors?: { start?: string; end?: string }
   /** Suivi de montage. */
   status?: InstallStatus
   createdAt: number

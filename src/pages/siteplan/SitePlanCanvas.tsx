@@ -54,6 +54,8 @@ interface Props {
   /** Ids (objets et lignes) retenus en mode sélection multiple. */
   multiIds: Set<string>
   lineDraft: LatLng[]
+  /** Id d'objet aimanté pour chaque point du tracé en cours (null = libre). */
+  draftSnaps?: (string | null)[]
   overlays: OverlayItem[]
   onTap: (gps: LatLng) => void
   onSelect: (sel: SiteSelection) => void
@@ -102,6 +104,7 @@ export default function SitePlanCanvas({
   selection,
   multiIds,
   lineDraft,
+  draftSnaps,
   overlays,
   onTap,
   onSelect,
@@ -431,6 +434,21 @@ export default function SitePlanCanvas({
                     onClick={handleLineTap}
                     onTap={handleLineTap}
                   />
+                  {/* Points d'ancrage : extrémités aimantées à un objet */}
+                  {([l.anchors?.start ? pts[0] : null, l.anchors?.end ? pts[pts.length - 1] : null].filter(
+                    Boolean,
+                  ) as { x: number; y: number }[]).map((p, i) => (
+                    <Circle
+                      key={i}
+                      x={p.x}
+                      y={p.y}
+                      radius={px(5)}
+                      fill={DISCIPLINE_COLORS[l.layer]}
+                      stroke="#0b1220"
+                      strokeWidth={px(1.5)}
+                      listening={false}
+                    />
+                  ))}
                   <Text
                     text={`${l.status === 'done' || l.status === 'checked' ? '✓ ' : ''}${formatMeters(length)}${def?.unitLengthM ? ` · ${Math.ceil(length / def.unitLengthM)}×` : ''}`}
                     x={mid.x + px(8)}
@@ -458,18 +476,32 @@ export default function SitePlanCanvas({
           {mode === 'line' &&
             lineDraft.map((p, i) => {
               const c = toCanvas(p)
+              const snapped = !!draftSnaps?.[i]
               return (
-                <Circle
-                  key={i}
-                  x={c.x}
-                  y={c.y}
-                  radius={px(9)}
-                  fill="#a78bfa"
-                  stroke="#0b1220"
-                  strokeWidth={px(2)}
-                  draggable
-                  onDragEnd={(e) => onDraftPointMove(i, toGps({ x: e.target.x(), y: e.target.y() }))}
-                />
+                <Group key={i}>
+                  {/* Halo d'aimantation quand le point est ancré à un objet */}
+                  {snapped && (
+                    <Circle
+                      x={c.x}
+                      y={c.y}
+                      radius={px(15)}
+                      stroke="#34d399"
+                      strokeWidth={px(2)}
+                      dash={[px(4), px(3)]}
+                      listening={false}
+                    />
+                  )}
+                  <Circle
+                    x={c.x}
+                    y={c.y}
+                    radius={px(9)}
+                    fill={snapped ? '#34d399' : '#a78bfa'}
+                    stroke="#0b1220"
+                    strokeWidth={px(2)}
+                    draggable
+                    onDragEnd={(e) => onDraftPointMove(i, toGps({ x: e.target.x(), y: e.target.y() }))}
+                  />
+                </Group>
               )
             })}
 
@@ -484,8 +516,12 @@ export default function SitePlanCanvas({
               const selected = (selection?.kind === 'object' && selection.id === o.id) || inMulti
               const c = toCanvas(o.center)
               const isPoint = view.isPoint
-              const w = isPoint ? px(24) : o.widthM
-              const h = isPoint ? px(24) : o.heightM
+              // Lisibilité dézoomé : les objets à emprise gardent ~30 px à
+              // l'écran minimum (agrandis à proportions constantes), et
+              // retrouvent leur taille réelle dès qu'on zoome.
+              const boost = isPoint ? 1 : Math.max(1, px(30) / Math.max(o.widthM, o.heightM, 0.01))
+              const w = isPoint ? px(28) : o.widthM * boost
+              const h = isPoint ? px(28) : o.heightM * boost
               const handleObjectTap = (e: Konva.KonvaEventObject<Event>) => {
                 e.cancelBubble = true
                 if (mode === 'multi' || mode === 'check') onToggleMulti(o.id)
@@ -535,7 +571,7 @@ export default function SitePlanCanvas({
                   )}
                   <Text
                     text={view.glyph}
-                    fontSize={isPoint ? px(10) : Math.max(Math.min(w, h) * 0.4, px(9))}
+                    fontSize={isPoint ? px(11) : Math.max(Math.min(w, h) * 0.4, px(10))}
                     fontStyle="bold"
                     fill={isPoint ? '#0b1220' : '#e8edf6'}
                     width={w}

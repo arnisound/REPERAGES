@@ -6,7 +6,7 @@ import { db } from '../db/db'
 import { DISCIPLINES, DISCIPLINE_COLORS, DISCIPLINE_LABELS } from '../types'
 import { formatMeters } from '../utils/geo'
 import { SECTION_SIZES, aggregateCuts } from '../utils/cutlist'
-import { computeMaterialSummary, materialSummaryText } from '../utils/materialSummary'
+import { computeMaterialSummary, materialSummaryText, spareSuggestion } from '../utils/materialSummary'
 import TopBar from '../components/TopBar'
 
 const DEFAULT_SIZES = [5, 10, 20]
@@ -36,6 +36,7 @@ export default function MaterialPage() {
     }, [projectId]) ?? []
 
   const [sizes, setSizes] = useState<number[]>(DEFAULT_SIZES)
+  const [sparePct, setSparePct] = useState(0)
 
   useEffect(() => {
     if (!projectId) return
@@ -48,6 +49,8 @@ export default function MaterialPage() {
         /* valeur corrompue : on garde le défaut */
       }
     }
+    const spare = parseInt(localStorage.getItem(`spare-pct:${projectId}`) ?? '0', 10)
+    if ([0, 10, 15, 20].includes(spare)) setSparePct(spare)
   }, [projectId])
 
   function toggleSize(length: number) {
@@ -58,6 +61,11 @@ export default function MaterialPage() {
     })
   }
 
+  function pickSpare(pct: number) {
+    setSparePct(pct)
+    if (projectId) localStorage.setItem(`spare-pct:${projectId}`, String(pct))
+  }
+
   const summary = useMemo(
     () => computeMaterialSummary({ siteObjects, siteLines, planObjects, planConnections, plans }),
     [siteObjects, planObjects, siteLines, planConnections, plans],
@@ -65,7 +73,7 @@ export default function MaterialPage() {
   const { objectGroups, lineGroups, powerByLayer, powerTotal, progressByLayer, progressTotal, hasAnything } = summary
 
   function buildSummaryText(): string {
-    return materialSummaryText(summary, project?.name ?? '', sizes).join('\n')
+    return materialSummaryText(summary, project?.name ?? '', sizes, sparePct).join('\n')
   }
 
   async function handleCopy() {
@@ -118,6 +126,24 @@ export default function MaterialPage() {
               <p style={{ fontSize: 12, color: 'var(--text-dim)', marginTop: 10 }}>
                 Chaque tirage est couvert par des tronçons entiers parmi les longueurs cochées — le décompte indique
                 combien de câbles de chaque taille prévoir.
+              </p>
+              <h3 style={{ fontSize: 14, margin: '12px 0 10px' }}>Câbles de secours (spare)</h3>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                {[0, 10, 15, 20].map((pct) => (
+                  <button
+                    key={pct}
+                    type="button"
+                    className={sparePct === pct ? 'btn' : 'btn secondary'}
+                    style={{ minHeight: 38, padding: '8px 14px' }}
+                    onClick={() => pickSpare(pct)}
+                  >
+                    {pct === 0 ? 'Aucun' : `+${pct} %`}
+                  </button>
+                ))}
+              </div>
+              <p style={{ fontSize: 12, color: 'var(--text-dim)', marginTop: 10 }}>
+                Suggère des câbles en plus « au cas où » : un pourcentage du nombre de tronçons prévus, minimum 1 par
+                type de câble dès qu'il y a un tirage.
               </p>
             </div>
           )}
@@ -223,6 +249,15 @@ export default function MaterialPage() {
                           · fourni {formatMeters(cuts.supplied)} · chute {formatMeters(Math.max(0, cuts.supplied - total))}
                         </div>
                       )}
+                      {cuts &&
+                        (() => {
+                          const spare = spareSuggestion(cuts.counts, sparePct)
+                          return spare ? (
+                            <div style={{ color: '#34d399', fontSize: 13, marginTop: 4 }}>
+                              → Spare conseillé : +{spare.count}× {spare.size} m
+                            </div>
+                          ) : null
+                        })()}
                       {g.uncalibratedRuns > 0 && (
                         <div style={{ color: '#facc15', fontSize: 13, marginTop: 4 }}>
                           +{g.uncalibratedRuns} tirage(s) sur plan non calibré (longueur inconnue)

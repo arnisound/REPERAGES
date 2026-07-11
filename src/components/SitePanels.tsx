@@ -1,4 +1,4 @@
-import { ChevronsDown, ChevronsUp, Copy, Move, Trash2, X } from 'lucide-react'
+import { Cable, ChevronsDown, ChevronsUp, Copy, Move, Trash2, X } from 'lucide-react'
 import {
   bringSiteObjectToFront,
   deleteSiteLine,
@@ -17,7 +17,7 @@ import {
   type SiteLine,
   type SiteObject,
 } from '../types'
-import { findLineDef, findObjectDef, objectView } from '../utils/catalog'
+import { findLineDef, findObjectDef, objectOutputs, objectView, type DistOption } from '../utils/catalog'
 import { formatMeters, lineLengthMeters } from '../utils/geo'
 
 function StatusButtons({ value, onChange }: { value: InstallStatus; onChange: (s: InstallStatus) => void }) {
@@ -71,15 +71,19 @@ function SpecSelect({
 export function SiteObjectPanel({
   object,
   moveHint,
+  onStartCable,
   onClose,
 }: {
   object: SiteObject
   /** Sentence explaining how to move the object in the current view. */
   moveHint: string
+  /** Démarre le tracé d'un câble ancré à cet objet (assistant de distribution). */
+  onStartCable?: (option: DistOption) => void
   onClose: () => void
 }) {
   const def = findObjectDef(object.layer, object.symbolType)
   const view = objectView(object)
+  const outputs = onStartCable ? objectOutputs(object) : []
   return (
     <div className="map-panel">
       <div className="map-panel-row">
@@ -132,6 +136,24 @@ export function SiteObjectPanel({
           specs={def?.specs ?? []}
           onChange={(spec) => updateSiteObject(object.id, { spec })}
         />
+      )}
+      {outputs.length > 0 && (
+        <div className="map-panel-row" style={{ flexWrap: 'wrap' }}>
+          <label style={{ fontSize: 13, color: 'var(--text-dim)' }}>
+            <Cable size={14} style={{ verticalAlign: -2 }} /> Départs
+          </label>
+          {outputs.map((opt) => (
+            <button
+              key={`${opt.lineType}|${opt.spec ?? ''}`}
+              className="btn secondary"
+              style={{ minHeight: 34, padding: '5px 10px', fontSize: 12 }}
+              onClick={() => onStartCable!(opt)}
+              type="button"
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
       )}
       <div className="map-panel-row">
         <label style={{ fontSize: 13, color: 'var(--text-dim)' }}>Puissance (kW)</label>

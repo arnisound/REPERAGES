@@ -58,6 +58,8 @@ export const KVA_SPECS = ['20 kVA', '40 kVA', '60 kVA', '100 kVA', '200 kVA']
 
 export const EXTINCTEUR_SPECS = ['Eau pulvérisée', 'CO2', 'Poudre ABC']
 
+export const DMX_PORT_SPECS = ['2 sorties', '4 sorties', '8 sorties']
+
 export const OBJECT_CATALOG: Record<Discipline, ObjectDef[]> = {
   implantation: [
     { type: 'tente_3x3', label: 'Tente 3×3 m', w: 3, h: 3, glyph: 'T' },
@@ -172,6 +174,10 @@ export const OBJECT_CATALOG: Record<Discipline, ObjectDef[]> = {
     { type: 'micro', label: 'Position micro', w: 0.2, h: 0.2, glyph: 'M', point: true },
     { type: 'ampli', label: 'Rack ampli', w: 0.6, h: 0.8, glyph: 'AR', point: true },
     { type: 'stagebox', label: 'Stagebox / patch scène', w: 0.5, h: 0.4, glyph: 'SB', point: true },
+    { type: 'stagebox_dante', label: 'Stagebox Dante / AES67', w: 0.5, h: 0.4, glyph: 'DNT', point: true },
+    { type: 'stagebox_aes50', label: 'Stagebox AES50 (Midas/Behringer)', w: 0.5, h: 0.4, glyph: 'A50', point: true },
+    { type: 'interface_madi', label: 'Interface MADI', w: 0.5, h: 0.4, glyph: 'MDI', point: true },
+    { type: 'splitter_audio', label: 'Splitter micro / patch XLR', w: 0.5, h: 0.4, glyph: 'SPL', point: true },
     { type: 'di_box', label: 'Boîte de direct (DI)', w: 0.2, h: 0.2, glyph: 'DI', point: true },
     { type: 'micro_hf', label: 'Récepteur micro HF', w: 0.4, h: 0.3, glyph: 'HF', point: true },
     { type: 'pied_micro', label: 'Pied de micro', w: 0.3, h: 0.3, glyph: 'PM', point: true },
@@ -186,6 +192,8 @@ export const OBJECT_CATALOG: Record<Discipline, ObjectDef[]> = {
     { type: 'pied_projecteur', label: 'Pied / totem lumière', w: 0.8, h: 0.8, glyph: 'ST' },
     { type: 'structure', label: 'Structure / pont 6 m', w: 6, h: 0.5, glyph: 'PT' },
     { type: 'gradateur', label: 'Rack gradateur', w: 0.6, h: 0.8, glyph: 'GR', point: true },
+    { type: 'node_artnet', label: 'Node ArtNet/sACN → DMX', w: 0.3, h: 0.2, glyph: 'ND', point: true, specs: DMX_PORT_SPECS },
+    { type: 'splitter_dmx', label: 'Splitter / booster DMX', w: 0.3, h: 0.2, glyph: 'SPL', point: true, specs: DMX_PORT_SPECS },
     { type: 'pupitre_lumiere', label: 'Pupitre lumière', w: 1.2, h: 0.8, glyph: 'PU' },
     { type: 'poursuite', label: 'Poursuite', w: 1, h: 1, glyph: 'PS', point: true },
     { type: 'blinder', label: 'Blinder', w: 0.5, h: 0.3, glyph: 'BL', point: true },
@@ -246,10 +254,15 @@ export const LINE_CATALOG: Record<Discipline, LineDef[]> = {
     { type: 'multipaire', label: 'Multipaire / snake', sectionable: true },
     { type: 'cable_hp', label: 'Câble HP', sectionable: true },
     { type: 'cable_xlr', label: 'Câble micro (XLR)', sectionable: true },
+    { type: 'cable_dante', label: 'Réseau Dante / AES67 (Cat)', sectionable: true, specs: RJ45_SPECS },
+    { type: 'cable_aes50', label: 'Liaison AES50 (Cat 5e)', sectionable: true },
+    { type: 'cable_aes', label: 'AES/EBU numérique (110 Ω)', sectionable: true },
+    { type: 'cable_madi', label: 'MADI (coax / fibre)', sectionable: true },
   ],
   lumiere: [
     { type: 'cable_dmx', label: 'Câble DMX', sectionable: true },
     { type: 'cable_lumiere', label: 'Câble puissance lumière', sectionable: true },
+    { type: 'cable_artnet', label: 'Réseau ArtNet/sACN (Cat)', sectionable: true, specs: RJ45_SPECS },
   ],
   securite: [
     { type: 'barriere', label: 'Barrières (2 m)', unitLengthM: 2 },
@@ -300,5 +313,168 @@ export function objectView(o: SiteObject): ObjectView {
     glyph: o.glyph ?? def?.glyph ?? '?',
     color: o.color ?? DISCIPLINE_COLORS[o.layer],
     isPoint: o.isPoint ?? def?.point ?? false,
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Distribution : départs de câble proposés par objet (assistant de câblage)
+// ---------------------------------------------------------------------------
+
+/** Départ de câble proposé depuis un objet (armoire, stagebox, node…). */
+export interface DistOption {
+  /** Libellé court affiché sur le bouton : « 2× TRI 63A », « DMX (4 sorties) ». */
+  label: string
+  layer: Discipline
+  lineType: string
+  spec?: string
+}
+
+/**
+ * Répartition électrique usuelle en événementiel : ce que l'on retire d'une
+ * armoire / d'un coffret selon son calibre d'arrivée (distros du commerce).
+ */
+const ELEC_DISTRIBUTION: Record<string, { spec: string; count: number }[]> = {
+  'POWERLOCK 400A': [
+    { spec: 'POWERLOCK 250A', count: 2 },
+    { spec: 'TRI 125A', count: 3 },
+  ],
+  'POWERLOCK 250A': [
+    { spec: 'TRI 125A', count: 2 },
+    { spec: 'TRI 63A', count: 2 },
+  ],
+  'TRI 125A': [
+    { spec: 'TRI 63A', count: 2 },
+    { spec: 'TRI 32A', count: 4 },
+  ],
+  'TRI 63A': [
+    { spec: 'TRI 32A', count: 2 },
+    { spec: 'MONO 16A', count: 12 },
+  ],
+  'TRI 32A': [
+    { spec: 'TRI 16A', count: 2 },
+    { spec: 'MONO 16A', count: 6 },
+  ],
+  'TRI 16A': [{ spec: 'MONO 16A', count: 3 }],
+  'MONO 32A': [{ spec: 'MONO 16A', count: 2 }],
+}
+
+/** Sorties usuelles d'un groupe électrogène selon sa puissance (≈ 1,44 A/kVA en 400 V tri). */
+const KVA_OUTPUTS: Record<string, { spec: string; count: number }[]> = {
+  '20 kVA': [
+    { spec: 'TRI 32A', count: 1 },
+    { spec: 'MONO 16A', count: 2 },
+  ],
+  '40 kVA': [
+    { spec: 'TRI 63A', count: 1 },
+    { spec: 'TRI 32A', count: 1 },
+  ],
+  '60 kVA': [
+    { spec: 'TRI 63A', count: 1 },
+    { spec: 'TRI 32A', count: 2 },
+  ],
+  '100 kVA': [
+    { spec: 'TRI 125A', count: 1 },
+    { spec: 'TRI 63A', count: 1 },
+  ],
+  '200 kVA': [
+    { spec: 'POWERLOCK 250A', count: 1 },
+    { spec: 'TRI 125A', count: 1 },
+  ],
+}
+
+/**
+ * Départs de câble proposés pour un objet placé, selon son type et son calibre.
+ * Chaque conversion du métier est rattachée à l'objet qui la réalise :
+ * élec (armoires/coffrets/groupes → calibres inférieurs), son (stagebox
+ * Dante → XLR, AES50, MADI, splitter AES), lumière (node ArtNet → DMX),
+ * réseau et vidéo.
+ */
+export function objectOutputs(o: SiteObject): DistOption[] {
+  const opt = (layer: Discipline, lineType: string, label: string, spec?: string): DistOption => ({
+    layer,
+    lineType,
+    label,
+    spec,
+  })
+  const elec = (x: { spec: string; count: number }) =>
+    opt('electricite', 'cable_elec', `${x.count}× ${x.spec}`, x.spec)
+  const t = o.symbolType
+
+  switch (o.layer) {
+    case 'electricite':
+      if (t === 'armoire_electrique' || t === 'coffret' || t === 'coffret_forain') {
+        return (o.spec ? ELEC_DISTRIBUTION[o.spec] ?? [] : []).map(elec)
+      }
+      if (t === 'groupe_electrogene') {
+        return ((o.spec ? KVA_OUTPUTS[o.spec] : undefined) ?? [{ spec: 'TRI 63A', count: 1 }]).map(elec)
+      }
+      if (t === 'transfo') return [elec({ spec: 'POWERLOCK 400A', count: 1 }), elec({ spec: 'TRI 125A', count: 1 })]
+      if (t === 'onduleur') return [elec({ spec: 'MONO 16A', count: 2 })]
+      return []
+    case 'audio':
+      switch (t) {
+        case 'stagebox_dante':
+          return [
+            opt('audio', 'cable_dante', 'Dante / AES67 (Cat)'),
+            opt('audio', 'cable_xlr', 'Modulation XLR'),
+          ]
+        case 'stagebox_aes50':
+          return [opt('audio', 'cable_aes50', 'AES50 (Cat 5e)'), opt('audio', 'cable_xlr', 'Modulation XLR')]
+        case 'interface_madi':
+          return [
+            opt('audio', 'cable_madi', 'MADI (coax/fibre)'),
+            opt('audio', 'cable_dante', 'Dante / AES67 (Cat)'),
+            opt('audio', 'cable_xlr', 'Modulation XLR'),
+          ]
+        case 'splitter_audio':
+          return [opt('audio', 'cable_xlr', 'XLR (splits)'), opt('audio', 'cable_aes', 'AES/EBU 110 Ω')]
+        case 'stagebox':
+          return [opt('audio', 'multipaire', 'Multipaire'), opt('audio', 'cable_xlr', 'Modulation XLR')]
+        case 'console_audio':
+        case 'console_retour':
+          return [
+            opt('audio', 'cable_dante', 'Dante / AES67 (Cat)'),
+            opt('audio', 'cable_aes50', 'AES50 (Cat 5e)'),
+            opt('audio', 'cable_madi', 'MADI (coax/fibre)'),
+            opt('audio', 'multipaire', 'Multipaire'),
+          ]
+        case 'ampli':
+          return [opt('audio', 'cable_hp', 'Câble HP')]
+        default:
+          return []
+      }
+    case 'lumiere':
+      switch (t) {
+        case 'node_artnet':
+          return [
+            opt('lumiere', 'cable_dmx', `DMX (${o.spec ?? 'sorties'})`),
+            opt('lumiere', 'cable_artnet', 'ArtNet/sACN (Cat)'),
+          ]
+        case 'splitter_dmx':
+          return [opt('lumiere', 'cable_dmx', `DMX (${o.spec ?? 'sorties'})`)]
+        case 'gradateur':
+          return [opt('lumiere', 'cable_lumiere', 'Puissance lumière'), opt('lumiere', 'cable_dmx', 'DMX')]
+        case 'pupitre_lumiere':
+          return [opt('lumiere', 'cable_artnet', 'ArtNet/sACN (Cat)'), opt('lumiere', 'cable_dmx', 'DMX')]
+        default:
+          return []
+      }
+    case 'reseau':
+      if (t === 'switch' || t === 'routeur' || t === 'baie_brassage') {
+        return [opt('reseau', 'cable_rj45', 'RJ45'), opt('reseau', 'fibre', 'Fibre optique')]
+      }
+      if (t === 'point_fibre' || t === 'convertisseur_fibre') return [opt('reseau', 'fibre', 'Fibre optique')]
+      return []
+    case 'video':
+      if (t === 'melangeur' || t === 'regie_video') {
+        return [
+          opt('video', 'cable_sdi', 'SDI'),
+          opt('video', 'cable_hdmi', 'HDMI'),
+          opt('video', 'fibre_video', 'Fibre vidéo'),
+        ]
+      }
+      return []
+    default:
+      return []
   }
 }

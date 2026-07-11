@@ -87,10 +87,32 @@ export async function addSiteObject(data: {
 
 export async function updateSiteObject(id: string, patch: Partial<SiteObject>) {
   await db.siteObjects.update(id, patch)
+  // Les extrémités de câbles ancrées sur cet objet suivent son déplacement.
+  if (patch.center) {
+    const anchored = await db.siteLines
+      .filter((l) => l.anchors?.start === id || l.anchors?.end === id)
+      .toArray()
+    for (const l of anchored) {
+      const points = [...l.points]
+      if (l.anchors?.start === id) points[0] = patch.center
+      if (l.anchors?.end === id) points[points.length - 1] = patch.center
+      await db.siteLines.update(l.id, { points })
+    }
+  }
 }
 
 export async function deleteSiteObject(id: string) {
   await db.siteObjects.delete(id)
+  // Détache les câbles qui étaient aimantés à l'objet supprimé.
+  const anchored = await db.siteLines
+    .filter((l) => l.anchors?.start === id || l.anchors?.end === id)
+    .toArray()
+  for (const l of anchored) {
+    const anchors = { ...l.anchors }
+    if (anchors.start === id) delete anchors.start
+    if (anchors.end === id) delete anchors.end
+    await db.siteLines.update(l.id, { anchors: anchors.start || anchors.end ? anchors : undefined })
+  }
 }
 
 /** Place l'objet au-dessus de tous les autres objets du projet. */
@@ -134,6 +156,7 @@ export async function addSiteLine(data: {
   points: LatLng[]
   label?: string
   spec?: string
+  anchors?: { start?: string; end?: string }
 }): Promise<SiteLine> {
   const line: SiteLine = { id: uuid(), createdAt: Date.now(), ...data }
   await db.siteLines.add(line)
@@ -176,6 +199,8 @@ export async function duplicateSiteLine(id: string): Promise<SiteLine | undefine
     ...line,
     id: uuid(),
     points: line.points.map((p) => offsetLatLng(p, 2, -2)),
+    // La copie est décalée : elle ne reste pas aimantée aux objets d'origine.
+    anchors: undefined,
     createdAt: Date.now(),
   }
   await db.siteLines.add(copy)

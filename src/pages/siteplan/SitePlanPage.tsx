@@ -45,11 +45,11 @@ import {
   type Discipline,
   type LatLng,
 } from '../../types'
-import { LINE_CATALOG, type LineDef, type PlacePayload } from '../../utils/catalog'
+import { LINE_CATALOG, type DistOption, type LineDef, type PlacePayload } from '../../utils/catalog'
 import { formatArea, formatMeters, lineLengthMeters, offsetLatLng, polygonAreaM2, polygonCenter } from '../../utils/geo'
 import { generateDxf } from '../../utils/dxf'
 import { aggregateCuts } from '../../utils/cutlist'
-import { computeMaterialSummary } from '../../utils/materialSummary'
+import { computeMaterialSummary, spareSuggestion } from '../../utils/materialSummary'
 import Modal from '../../components/Modal'
 import TopBar from '../../components/TopBar'
 import { LinePickerModal, ObjectPickerModal } from '../../components/CatalogPickers'
@@ -97,6 +97,8 @@ export default function SitePlanPage() {
   const [placeTarget, setPlaceTarget] = useState<PlacePayload | null>(null)
   const [lineTarget, setLineTarget] = useState<{ layer: Discipline; def: LineDef; spec?: string } | null>(null)
   const [lineDraft, setLineDraft] = useState<LatLng[]>([])
+  // Id d'objet aimanté pour chaque point du tracé (ancrage des extrémités)
+  const [draftSnaps, setDraftSnaps] = useState<(string | null)[]>([])
   const [cotedLength, setCotedLength] = useState('')
   const [showObjectPicker, setShowObjectPicker] = useState(false)
   const [showLinePicker, setShowLinePicker] = useState(false)
@@ -256,7 +258,35 @@ export default function SitePlanPage() {
     setPlaceTarget(null)
     setLineTarget(null)
     setLineDraft([])
+    setDraftSnaps([])
     setMultiIds(new Set())
+  }
+
+  /**
+   * Aimantation du tracé de câble : si le point tapé est à moins de ~24 px
+   * écran du centre d'un objet visible, il s'y accroche (et l'extrémité sera
+   * ancrée : elle suivra l'objet déplacé).
+   */
+  function snapToObject(gps: LatLng): { gps: LatLng; objectId: string | null } {
+    const thresholdM = 24 / viewScale
+    let best: { id: string; center: LatLng; d: number } | null = null
+    for (const o of objects) {
+      if (!visibleLayers.has(o.layer)) continue
+      const d = lineLengthMeters([o.center, gps])
+      if (d <= thresholdM && (!best || d < best.d)) best = { id: o.id, center: o.center, d }
+    }
+    return best ? { gps: best.center, objectId: best.id } : { gps, objectId: null }
+  }
+
+  /** Départ de câble depuis un objet (assistant de distribution du panneau). */
+  function startCableFrom(objectId: string, center: LatLng, opt: DistOption) {
+    const def = LINE_CATALOG[opt.layer].find((l) => l.type === opt.lineType)
+    if (!def) return
+    setSelection(null)
+    setLineTarget({ layer: opt.layer, def, spec: opt.spec })
+    setLineDraft([center])
+    setDraftSnaps([objectId])
+    setMode('line')
   }
 
   function toggleMulti(id: string) {
@@ -279,18 +309,25 @@ export default function SitePlanPage() {
   }
 
   async function handleGroupMove(eastM: number, northM: number) {
-    const moves: Promise<unknown>[] = []
+    // Objets d'abord : leurs câbles ancrés suivent via updateSiteObject.
     for (const obj of objects) {
       if (multiIds.has(obj.id)) {
-        moves.push(updateSiteObject(obj.id, { center: offsetLatLng(obj.center, eastM, northM) }))
+        await updateSiteObject(obj.id, { center: offsetLatLng(obj.center, eastM, northM) })
       }
     }
     for (const line of lines) {
-      if (multiIds.has(line.id)) {
-        moves.push(updateSiteLine(line.id, { points: line.points.map((p) => offsetLatLng(p, eastM, northM)) }))
+      if (!multiIds.has(line.id)) continue
+      const points = line.points.map((p) => offsetLatLng(p, eastM, northM))
+      // Extrémité ancrée à un objet resté en place : elle y reste aimantée.
+      const pin = (anchorId: string | undefined, index: number) => {
+        if (!anchorId || multiIds.has(anchorId)) return
+        const target = objects.find((o) => o.id === anchorId)
+        if (target) points[index] = target.center
       }
+      pin(line.anchors?.start, 0)
+      pin(line.anchors?.end, points.length - 1)
+      await updateSiteLine(line.id, { points })
     }
-    await Promise.all(moves)
   }
 
   async function handleDuplicateMulti() {
@@ -338,7 +375,10 @@ export default function SitePlanPage() {
       return
     }
     if (mode === 'line') {
-      setLineDraft((d) => [...d, gps])
+      // Les câbles/tuyaux s'aimantent aux objets ; pas les barrières ni les cotes.
+      const snap = lineTarget?.def.sectionable ? snapToObject(gps) : { gps, objectId: null }
+      setLineDraft((d) => [...d, snap.gps])
+      setDraftSnaps((s) => [...s, snap.objectId])
     }
   }
 
@@ -363,6 +403,7 @@ export default function SitePlanPage() {
       return [5, 10, 20]
     }
   })()
+  const sparePct = projectId ? parseInt(localStorage.getItem(`spare-pct:${projectId}`) ?? '0', 10) || 0 : 0
 
   function exportPng() {
     const dataUrl = exportHandle.current?.exportImage({ crop: captureCrop() })
@@ -460,6 +501,7 @@ export default function SitePlanPage() {
         if (summary.powerTotal > 0) totals.push(`Puissance totale : ${summary.powerTotal.toFixed(1)} kW`)
         if (summary.progressTotal.total > 0)
           totals.push(`Montage : ${summary.progressTotal.done}/${summary.progressTotal.total} installés`)
+        if (sparePct > 0) totals.push(`Spare câbles : +${sparePct} %`)
         if (totals.length) {
           pdf.text(totals.join('   ·   '), margin, y)
           y += 7
@@ -521,6 +563,12 @@ export default function SitePlanPage() {
                   y,
                 )
                 y += lineH
+                const spare = spareSuggestion(cuts.counts, sparePct)
+                if (spare) {
+                  ensure()
+                  pdf.text(`    → spare conseillé : +${spare.count}× ${spare.size} m`, margin + 6, y)
+                  y += lineH
+                }
               }
             }
             if (g.uncalibratedRuns) {
@@ -605,12 +653,15 @@ export default function SitePlanPage() {
 
   async function finishLine() {
     if (!projectId || !lineTarget || lineDraft.length < 2) return
+    const start = draftSnaps[0] ?? undefined
+    const end = draftSnaps[lineDraft.length - 1] ?? undefined
     await addSiteLine({
       projectId,
       layer: lineTarget.layer,
       lineType: lineTarget.def.type,
       points: lineDraft,
       spec: lineTarget.spec,
+      anchors: start || end ? { start, end } : undefined,
     })
     resetTools()
   }
@@ -645,6 +696,7 @@ export default function SitePlanPage() {
             selection={selection}
             multiIds={multiIds}
             lineDraft={lineDraft}
+            draftSnaps={draftSnaps}
             overlays={overlayItems}
             onTap={handleTap}
             onSelect={setSelection}
@@ -656,7 +708,12 @@ export default function SitePlanPage() {
             onObjectMove={(id, gps) => updateSiteObject(id, { center: gps })}
             onObjectRotate={(id, rotation) => updateSiteObject(id, { rotation })}
             onGroupMove={handleGroupMove}
-            onDraftPointMove={(i, gps) => setLineDraft((d) => d.map((p, j) => (j === i ? gps : p)))}
+            onDraftPointMove={(i, gps) => {
+              // Ré-évalue l'aimantation quand on repositionne un point du tracé
+              const snap = lineTarget?.def.sectionable ? snapToObject(gps) : { gps, objectId: null }
+              setLineDraft((d) => d.map((p, j) => (j === i ? snap.gps : p)))
+              setDraftSnaps((s) => s.map((v, j) => (j === i ? snap.objectId : v)))
+            }}
             onViewScaleChange={setViewScale}
             exportRef={exportHandle}
           />
@@ -917,6 +974,7 @@ export default function SitePlanPage() {
                         const len = parseFloat(cotedLength.replace(',', '.'))
                         if (!(len > 0)) return
                         setLineDraft((d) => [...d, offsetLatLng(d[d.length - 1], dx * len, dy * len)])
+                        setDraftSnaps((s) => [...s, null])
                       }}
                       type="button"
                     >
@@ -928,7 +986,10 @@ export default function SitePlanPage() {
               <div className="map-panel-row">
                 <button
                   className="btn secondary"
-                  onClick={() => setLineDraft((d) => d.slice(0, -1))}
+                  onClick={() => {
+                    setLineDraft((d) => d.slice(0, -1))
+                    setDraftSnaps((s) => s.slice(0, -1))
+                  }}
                   disabled={lineDraft.length === 0}
                   type="button"
                 >
@@ -948,6 +1009,7 @@ export default function SitePlanPage() {
             <SiteObjectPanel
               object={selectedObject}
               moveHint="Glissez l'objet sur le plan pour le déplacer"
+              onStartCable={(opt) => startCableFrom(selectedObject.id, selectedObject.center, opt)}
               onClose={() => setSelection(null)}
             />
           )}
